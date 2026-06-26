@@ -12,6 +12,8 @@ interface Props {
   room: Room
   items: FurnitureItem[]
   onItemsChange: (items: FurnitureItem[]) => void
+  doors: DoorItem[]
+  onDoorsChange: (doors: DoorItem[]) => void
   onBack: () => void
 }
 
@@ -24,14 +26,13 @@ function snapTo(val: number, grid: number) {
 
 type AddPending = { ft: FurnitureType; variant: FurnitureVariant }
 
-export default function RoomDetailView({ room, items, onItemsChange, onBack }: Props) {
+export default function RoomDetailView({ room, items, onItemsChange, doors, onDoorsChange, onBack }: Props) {
   const [selectedId, setSelectedId]         = useState<string | null>(null)
   const [activeCategory, setActiveCategory] = useState(FURNITURE_CATEGORIES[0])
   const [expandedItem, setExpandedItem]     = useState<string | null>(null)
   const [addPending, setAddPending]         = useState<AddPending | null>(null)
   const [searchQuery, setSearchQuery]       = useState('')
   const [activeTab, setActiveTab]           = useState<'furniture' | 'door'>('furniture')
-  const [doors, setDoors]                   = useState<DoorItem[]>([])
   const [showDoorForm, setShowDoorForm]     = useState(false)
   const [doorForm, setDoorForm] = useState<{
     wall: DoorWall; position: number; widthCm: number; type: DoorType; flip: boolean
@@ -106,9 +107,9 @@ export default function RoomDetailView({ room, items, onItemsChange, onBack }: P
       id: `door-${Date.now()}`,
       ...doorForm,
     }
-    setDoors(prev => [...prev, door])
+    onDoorsChange([...doors, door])
     setShowDoorForm(false)
-  }, [doorForm])
+  }, [doorForm, doors, onDoorsChange])
 
   const selectedItem = items.find(it => it.id === selectedId)
 
@@ -193,7 +194,7 @@ export default function RoomDetailView({ room, items, onItemsChange, onBack }: P
                   </p>
                 </div>
                 <button
-                  onClick={() => setDoors(d => d.filter(x => x.id !== door.id))}
+                  onClick={() => onDoorsChange(doors.filter(x => x.id !== door.id))}
                   className="text-gray-300 hover:text-red-400 transition-colors text-xs"
                 >✕</button>
               </div>

@@ -1,13 +1,5 @@
-export type DoorType = 'swing' | 'sliding' | 'folding'
-export type DoorWall = 'top' | 'right' | 'bottom' | 'left'
-export type DoorItem = {
-  id: string
-  wall: DoorWall
-  position: number   // 0–1 along the wall
-  widthCm: number
-  type: DoorType
-  flip: boolean      // flip hinge side
-}
+import type { DoorType, DoorWall, DoorItem } from '../types'
+export type { DoorType, DoorWall, DoorItem }
 
 interface Props {
   door: DoorItem

@@ -718,6 +718,8 @@ export default function App() {
         room={liveRoom}
         items={roomFurniture[liveRoom.id] ?? []}
         onItemsChange={items => saveFurniture(liveRoom.id, items)}
+        doors={liveRoom.doors ?? []}
+        onDoorsChange={doors => updateRoom(liveRoom.id, { doors })}
         onBack={() => setDetailRoom(null)}
       />
     )
