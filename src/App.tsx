@@ -153,6 +153,12 @@ export default function App() {
   const isMobile = viewMode === 'mobile'
   const [showRoomForm,  setShowRoomForm]  = useState(false)
   const [presetShape,   setPresetShape]   = useState<'rect' | 'L' | null>(null)
+  // Name prompt: ask name when finishing a wall-drawn room, or rename an existing one
+  const [namePrompt, setNamePrompt] = useState<
+    | { kind: 'wall'; w: number; h: number; shape: ShapeData; x: number; y: number; initial: string }
+    | { kind: 'rename'; roomId: string; initial: string }
+    | null
+  >(null)
   const [showAptModal,  setShowAptModal]  = useState(false)
   const [editingRoom,   setEditingRoom]   = useState<Room | null>(null)
   const [detailRoom,    setDetailRoom]    = useState<Room | null>(null)
@@ -217,7 +223,7 @@ export default function App() {
   // ── Wall drawing ──────────────────────────────────────────────────────────
   // Finish drawing walls. If the path is closed → filled room (poly).
   // If it stays open (lines don't meet) → open walls (polyline). Both are saved.
-  const finishWalls = useCallback((pts: {x: number; y: number}[], roomCount: number, addRoomFn: typeof addRoom, forceClosed?: boolean) => {
+  const finishWalls = useCallback((pts: {x: number; y: number}[], roomCount: number, forceClosed?: boolean) => {
     // Deduplicate consecutive identical/very-close points
     const deduped: {x: number; y: number}[] = []
     for (const p of pts) {
@@ -253,8 +259,15 @@ export default function App() {
       : { type: 'polyline', points: normalizedPts }
 
     const defaultNames = ['거실', '안방', '작은방', '주방', '욕실', '드레스룸', '서재']
-    const name = (shapeData.type === 'polyline' ? '벽 ' : '') + (defaultNames[roomCount] ?? `방 ${roomCount + 1}`)
-    addRoomFn(name, snap(w, 5), snap(h, 5), shapeData, snap(minX, 5), snap(minY, 5))
+    const suggested = defaultNames[roomCount] ?? `공간 ${roomCount + 1}`
+    // Ask the user to choose/confirm the name before creating the room
+    setNamePrompt({
+      kind: 'wall',
+      w: snap(w, 5), h: snap(h, 5),
+      shape: shapeData,
+      x: snap(minX, 5), y: snap(minY, 5),
+      initial: suggested,
+    })
     setWallPts([])
     setWallCursor(null)
     setWallNearClose(false)
@@ -332,7 +345,7 @@ export default function App() {
       // Enter: finish walls (open or closed)
       if (e.key === 'Enter' && wallMode && wallPts.length >= 2) {
         e.preventDefault()
-        finishWalls(wallPts, rooms.length, addRoom)
+        finishWalls(wallPts, rooms.length)
         return
       }
       // Backspace: undo last wall point while drawing
@@ -1323,7 +1336,7 @@ export default function App() {
                     const cy = clamp((e.clientY - rect.top)  / scale, 0, apt.h)
                     // Close shape when near first point → filled room
                     if (wallNearClose && wallPts.length >= 3) {
-                      finishWalls(wallPts, rooms.length, addRoom, true)
+                      finishWalls(wallPts, rooms.length, true)
                       return
                     }
                     if (wallPts.length === 0) {
@@ -1341,7 +1354,7 @@ export default function App() {
                 onDoubleClick={e => {
                   if (wallMode && wallPts.length >= 2) {
                     e.stopPropagation()
-                    finishWalls(wallPts, rooms.length, addRoom)
+                    finishWalls(wallPts, rooms.length)
                   }
                 }}
                 onPointerDown={e => {
@@ -1678,7 +1691,7 @@ export default function App() {
                     )}
                     {wallPts.length >= 2 && !wallNearClose && (
                       <button
-                        onClick={() => finishWalls(wallPts, rooms.length, addRoom)}
+                        onClick={() => finishWalls(wallPts, rooms.length)}
                         style={{
                           background: '#10b981', color: 'white',
                           border: 'none', borderRadius: 12,
@@ -2064,6 +2077,12 @@ export default function App() {
                         가구 배치
                       </button>
                       <button
+                        onClick={() => setNamePrompt({ kind: 'rename', roomId: room.id, initial: room.name })}
+                        className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 shadow-md transition-colors whitespace-nowrap"
+                      >
+                        ✏️ 이름
+                      </button>
+                      <button
                         onClick={() => rotateRoom(room.id)}
                         className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 shadow-md transition-colors whitespace-nowrap"
                       >
@@ -2249,6 +2268,98 @@ export default function App() {
           onClose={() => setShowAptModal(false)}
         />
       )}
+      {namePrompt && (
+        <NamePromptModal
+          title={namePrompt.kind === 'rename' ? '이름 수정' : '공간 이름 선택'}
+          initial={namePrompt.initial}
+          onSave={name => {
+            if (namePrompt.kind === 'wall')
+              addRoom(name, namePrompt.w, namePrompt.h, namePrompt.shape, namePrompt.x, namePrompt.y)
+            else
+              updateRoom(namePrompt.roomId, { name })
+            setNamePrompt(null)
+          }}
+          onClose={() => setNamePrompt(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+const NAME_PRESETS = ['거실', '안방', '작은방', '주방', '욕실', '드레스룸', '서재', '현관', '베란다', '복도', '다용도실']
+
+function NamePromptModal({
+  title, initial, onSave, onClose,
+}: {
+  title: string
+  initial: string
+  onSave: (name: string) => void
+  onClose: () => void
+}) {
+  const [name, setName] = useState(initial)
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => { inputRef.current?.select() }, [])
+  const submit = () => onSave(name.trim() || initial)
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 300,
+        background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(2px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 340, background: 'white', borderRadius: 18,
+          padding: 20, boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+        }}
+      >
+        <p style={{ fontSize: 15, fontWeight: 700, color: '#1e293b', marginBottom: 14 }}>{title}</p>
+        <input
+          ref={inputRef}
+          value={name}
+          onChange={e => setName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') onClose() }}
+          placeholder="공간 이름 입력"
+          style={{
+            width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 12,
+            padding: '10px 12px', fontSize: 14, outline: 'none', marginBottom: 12,
+          }}
+        />
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 18 }}>
+          {NAME_PRESETS.map(p => (
+            <button
+              key={p}
+              onClick={() => setName(p)}
+              style={{
+                padding: '6px 11px', borderRadius: 999, fontSize: 12, fontWeight: 600,
+                cursor: 'pointer',
+                border: name === p ? '1.5px solid #6366f1' : '1.5px solid #e2e8f0',
+                background: name === p ? '#eef2ff' : 'white',
+                color: name === p ? '#4f46e5' : '#64748b',
+              }}
+            >{p}</button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={onClose}
+            style={{
+              flex: 1, padding: '10px 0', borderRadius: 12, border: '1.5px solid #e2e8f0',
+              background: 'white', color: '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+            }}
+          >취소</button>
+          <button
+            onClick={submit}
+            style={{
+              flex: 2, padding: '10px 0', borderRadius: 12, border: 'none',
+              background: '#6366f1', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            }}
+          >저장</button>
+        </div>
+      </div>
     </div>
   )
 }
