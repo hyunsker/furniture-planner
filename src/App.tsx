@@ -128,6 +128,21 @@ export default function App() {
   const [selectedId,    setSelectedId]    = useState<string | null>(null)
   const [drag,          setDrag]          = useState<DragState>(null)
   const [copied,        setCopied]        = useState(false)
+
+  // ── Responsive: mobile / desktop view ──
+  const [viewMode, setViewMode] = useState<'desktop' | 'mobile'>(
+    () => (typeof window !== 'undefined' && window.innerWidth < 768) ? 'mobile' : 'desktop'
+  )
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [winSize, setWinSize] = useState(
+    () => ({ w: typeof window !== 'undefined' ? window.innerWidth : 1200, h: typeof window !== 'undefined' ? window.innerHeight : 800 })
+  )
+  useEffect(() => {
+    const onResize = () => setWinSize({ w: window.innerWidth, h: window.innerHeight })
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  const isMobile = viewMode === 'mobile'
   const [showRoomForm,  setShowRoomForm]  = useState(false)
   const [presetShape,   setPresetShape]   = useState<'rect' | 'L' | null>(null)
   const [showAptModal,  setShowAptModal]  = useState(false)
@@ -180,7 +195,11 @@ export default function App() {
   const canvasRef = useRef<HTMLDivElement>(null)
 
   const apt   = project ? { w: project.apt_w, h: project.apt_h } : { w: 1500, h: 1200 }
-  const scale = Math.min(CANVAS_W / apt.w, CANVAS_H / apt.h, 1.8)
+  // Available canvas area shrinks to the viewport on mobile so nothing overflows.
+  // Reserve space for the header (~58px) and the bottom tool dock (~82px).
+  const availW = isMobile ? winSize.w - 20 : CANVAS_W
+  const availH = isMobile ? winSize.h - 58 - 82 - 12 : CANVAS_H
+  const scale = Math.min(availW / apt.w, availH / apt.h, isMobile ? 1.4 : 1.8)
   const cW    = apt.w * scale
   const cH    = apt.h * scale
 
@@ -773,8 +792,23 @@ export default function App() {
   return (
     <div className="h-screen flex bg-[#F4F5F7] overflow-hidden">
 
+      {/* Mobile drawer backdrop */}
+      {isMobile && mobileSidebarOpen && (
+        <div
+          onClick={() => setMobileSidebarOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 90 }}
+        />
+      )}
+
       {/* ══ SIDEBAR ════════════════════════════════════════════════════════ */}
-      <aside className="w-[240px] bg-white border-r border-gray-100 flex flex-col shrink-0 shadow-sm">
+      <aside
+        className="bg-white border-r border-gray-100 flex flex-col shadow-sm"
+        style={isMobile ? {
+          position: 'fixed', top: 0, bottom: 0, left: 0, width: 260, zIndex: 95,
+          transform: mobileSidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+          transition: 'transform 0.25s ease',
+        } : { width: 240, flexShrink: 0 }}
+      >
 
         {/* Logo / Project name */}
         <div className="px-4 py-4 border-b border-gray-100">
@@ -787,10 +821,21 @@ export default function App() {
                 <rect x="11" y="10" width="7" height="8" rx="1" fill="white" fillOpacity="0.8"/>
               </svg>
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="text-[13px] font-semibold text-gray-900 truncate">{project?.name ?? '평면도'}</p>
               <p className="text-[10px] text-gray-400">{apt.w} × {apt.h} cm</p>
             </div>
+            {isMobile && (
+              <button
+                onClick={() => setMobileSidebarOpen(false)}
+                title="닫기"
+                className="flex items-center justify-center w-7 h-7 rounded-lg text-gray-400 hover:bg-gray-100 shrink-0"
+              >
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                  <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                </svg>
+              </button>
+            )}
           </div>
 
           {/* Actions */}
@@ -939,7 +984,7 @@ export default function App() {
                           key={variant.id + variant.label}
                           onClick={() => {
                             if (isPlacing) { setPlacingItem(null); setPlacingCursor(null) }
-                            else setPlacingItem({ typeId: variant.id, name: fType.name, w: variant.w, h: variant.h })
+                            else { setPlacingItem({ typeId: variant.id, name: fType.name, w: variant.w, h: variant.h }); if (isMobile) setMobileSidebarOpen(false) }
                           }}
                           className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition-all ${
                             isPlacing ? 'border-indigo-400 bg-indigo-50 ring-1 ring-indigo-300' : 'border-gray-100 bg-white hover:border-indigo-200 hover:bg-indigo-50'
@@ -1006,7 +1051,7 @@ export default function App() {
             </button>
             {/* 선으로 그리기 */}
             <button
-              onClick={() => { setTool(t => t === 'wall' ? 'select' : 'wall'); setWallPts([]); setWallCursor(null); setSelectedId(null) }}
+              onClick={() => { setTool(t => t === 'wall' ? 'select' : 'wall'); setWallPts([]); setWallCursor(null); setSelectedId(null); if (isMobile) setMobileSidebarOpen(false) }}
               className={`flex flex-col items-center gap-1 py-2 rounded-lg border transition-all ${
                 wallMode
                   ? 'bg-indigo-50 border-indigo-300 text-indigo-600'
@@ -1030,18 +1075,42 @@ export default function App() {
       </aside>
 
       {/* ══ MAIN CANVAS AREA ═══════════════════════════════════════════════ */}
-      <main className="flex-1 overflow-auto flex flex-col items-center justify-center p-8">
+      <main
+        className={`flex-1 overflow-auto flex flex-col items-center ${isMobile ? 'justify-center p-2' : 'justify-center p-8'}`}
+        style={isMobile ? { paddingBottom: 90 } : undefined}
+      >
 
         <div>
           {/* Canvas header */}
-          <div className="flex items-center justify-between mb-3 px-1">
-            <div className="flex items-center gap-2">
-              <span className="text-[13px] font-semibold text-gray-600">전체 도면</span>
-              <span className="text-[11px] text-gray-400">
-                {(apt.w / 100).toFixed(1)}m × {(apt.h / 100).toFixed(1)}m
-              </span>
+          <div className="flex items-center justify-between mb-3 px-1 gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              {isMobile && (
+                <button
+                  onClick={() => setMobileSidebarOpen(true)}
+                  title="메뉴 열기"
+                  className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 bg-white text-gray-600 shrink-0"
+                >
+                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                    <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                  </svg>
+                </button>
+              )}
+              <span className="text-[13px] font-semibold text-gray-600 shrink-0">전체 도면</span>
+              {!isMobile && (
+                <span className="text-[11px] text-gray-400">
+                  {(apt.w / 100).toFixed(1)}m × {(apt.h / 100).toFixed(1)}m
+                </span>
+              )}
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Mobile / Desktop view toggle */}
+              <button
+                onClick={() => { setViewMode(m => m === 'mobile' ? 'desktop' : 'mobile'); setMobileSidebarOpen(false) }}
+                title={isMobile ? '데스크탑 보기로' : '모바일 보기로'}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border bg-white border-gray-200 text-gray-600 hover:bg-gray-50"
+              >
+                {isMobile ? '💻 데스크탑' : '📱 모바일'}
+              </button>
               <button
                 onClick={() => undo()}
                 disabled={!canUndo}
@@ -1056,11 +1125,13 @@ export default function App() {
                   <path d="M7 4L3 8l4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                   <path d="M3 8h9a5 5 0 0 1 0 10H8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
-                되돌리기
+                {!isMobile && '되돌리기'}
               </button>
-              <span className="text-[11px] text-gray-400">
-                {wallMode ? '클릭 → 꼭짓점 · Esc 취소' : '더블클릭 = 가구배치 · 드래그 = 이동'}
-              </span>
+              {!isMobile && (
+                <span className="text-[11px] text-gray-400">
+                  {wallMode ? '클릭 → 꼭짓점 · Esc 취소' : '더블클릭 = 가구배치 · 드래그 = 이동'}
+                </span>
+              )}
             </div>
           </div>
 
@@ -1094,12 +1165,12 @@ export default function App() {
                 ))}
               </svg>
 
-              {/* ── Floating drawing toolbar (paint-app style) ── */}
+              {/* ── Floating drawing toolbar (paint-app style) — desktop only ── */}
               <div
                 onPointerDown={e => e.stopPropagation()}
                 style={{
                   position: 'absolute', top: 10, left: 10, zIndex: 60,
-                  display: 'flex', flexDirection: 'column', gap: 4,
+                  display: isMobile ? 'none' : 'flex', flexDirection: 'column', gap: 4,
                   background: 'white', borderRadius: 12, padding: 5,
                   boxShadow: '0 4px 16px rgba(0,0,0,0.12)', border: '1px solid #eef2ff',
                 }}
@@ -1939,6 +2010,81 @@ export default function App() {
             </div>
           </div>
       </main>
+
+      {/* ══ MOBILE BOTTOM DOCK ═════════════════════════════════════════════ */}
+      {isMobile && (
+        <div
+          onPointerDown={e => e.stopPropagation()}
+          style={{
+            position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 80,
+            background: 'white', borderTop: '1px solid #eef2ff',
+            boxShadow: '0 -4px 16px rgba(0,0,0,0.06)',
+            padding: '8px 10px calc(8px + env(safe-area-inset-bottom))',
+            display: 'flex', alignItems: 'stretch', gap: 6,
+          }}
+        >
+          {/* Drawing tools */}
+          {([
+            { id: 'select', label: '선택', icon: <path d="M4 3l11 5-4.5 1.5L9 14 4 3z" fill="currentColor"/> },
+            { id: 'rect', label: '사각형', icon: <rect x="3" y="5" width="14" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.8"/> },
+            { id: 'wall', label: '선', icon: <><path d="M3 16L9 5l3 6 5-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><circle cx="3" cy="16" r="1.8" fill="currentColor"/><circle cx="17" cy="7" r="1.8" fill="currentColor"/></> },
+          ] as { id: Tool; label: string; icon: React.ReactNode }[]).map(t => {
+            const active = tool === t.id
+            return (
+              <button
+                key={t.id}
+                onClick={() => { setTool(t.id); setWallPts([]); setWallCursor(null); setWallNearClose(false); setSelectedId(null); setDrawState(null) }}
+                style={{
+                  flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+                  padding: '8px 0', borderRadius: 12, border: 'none',
+                  background: active ? '#6366f1' : '#f8fafc',
+                  color: active ? 'white' : '#475569', fontSize: 11, fontWeight: 600,
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">{t.icon}</svg>
+                {t.label}
+              </button>
+            )
+          })}
+
+          <div style={{ width: 1, background: '#eef2ff', margin: '2px 2px' }}/>
+
+          {/* Undo */}
+          <button
+            onClick={() => undo()}
+            disabled={!canUndo}
+            style={{
+              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+              padding: '8px 0', borderRadius: 12, border: 'none',
+              background: '#f8fafc', color: canUndo ? '#475569' : '#cbd5e1', fontSize: 11, fontWeight: 600,
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <path d="M7 4L3 8l4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M3 8h9a5 5 0 0 1 0 10H8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            되돌리기
+          </button>
+
+          {/* Open sidebar (rooms/furniture) */}
+          <button
+            onClick={() => setMobileSidebarOpen(true)}
+            style={{
+              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+              padding: '8px 0', borderRadius: 12, border: 'none',
+              background: '#eef2ff', color: '#4f46e5', fontSize: 11, fontWeight: 700,
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <rect x="3" y="3" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.6"/>
+              <rect x="11" y="3" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.6"/>
+              <rect x="3" y="11" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.6"/>
+              <rect x="11" y="11" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="1.6"/>
+            </svg>
+            공간·가구
+          </button>
+        </div>
+      )}
 
       {/* ── Modals ─────────────────────────────────────────────────────────── */}
       {showRoomForm && (
