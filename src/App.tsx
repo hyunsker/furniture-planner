@@ -73,7 +73,7 @@ function orthogonalize(pts: { x: number; y: number }[]): { x: number; y: number 
   return out
 }
 
-const SNAP_DIST_CM = 12  // snap if within 12cm
+const SNAP_DIST_CM = 20  // snap a dragged room's edge onto a neighbour within 20cm
 
 function computeEdgeSnap(
   rawX: number, rawY: number,
@@ -479,20 +479,41 @@ export default function App() {
       let lx = clamp(cx, 0, apt.w) - room.x_cm
       let ly = clamp(cy, 0, apt.h) - room.y_cm
 
-      // Align to the two adjacent vertices so both touching walls stay perfectly H/V
+      // Collect snap targets (in this room's LOCAL coords).
+      // 1) Own adjacent vertices → keeps the two touching walls perfectly H/V.
       const prevNb = idx - 1 >= 0 ? pts[idx - 1] : (!isOpen ? pts[n - 1] : null)
       const nextNb = idx + 1 < n ? pts[idx + 1] : (!isOpen ? pts[0] : null)
       const neighbors = [prevNb, nextNb].filter(Boolean) as { x: number; y: number }[]
+      const xTargets: number[] = []
+      const yTargets: number[] = []
+      for (const nb of neighbors) { xTargets.push(nb.x); yTargets.push(nb.y) }
 
-      const ALIGN = 28  // cm – snap onto a neighbour's row/column for clean right angles
-      // pick the closest neighbour x / y within threshold
-      let bestDX = ALIGN, bestDY = ALIGN
-      for (const nb of neighbors) {
-        if (Math.abs(lx - nb.x) < bestDX) { bestDX = Math.abs(lx - nb.x); lx = nb.x }
-        if (Math.abs(ly - nb.y) < bestDY) { bestDY = Math.abs(ly - nb.y); ly = nb.y }
+      // 2) Other rooms' walls & vertices → lets the user weld this corner exactly
+      //    onto a neighbouring room's edge (no more "looks aligned but slightly off").
+      for (const o of rooms) {
+        if (o.id === room.id) continue
+        const exs = [o.x_cm, o.x_cm + o.width_cm]
+        const eys = [o.y_cm, o.y_cm + o.height_cm]
+        const sd = o.shape_data
+        if (sd && (sd.type === 'poly' || sd.type === 'polyline')) {
+          for (const p of sd.points) { exs.push(o.x_cm + p.x); eys.push(o.y_cm + p.y) }
+        }
+        for (const e of exs) xTargets.push(e - room.x_cm)
+        for (const e of eys) yTargets.push(e - room.y_cm)
       }
 
-      const moved = { x: snap(lx, GRID), y: snap(ly, GRID) }
+      const ALIGN = 25  // cm – magnet radius for alignment
+      let bestDX = ALIGN, bestDY = ALIGN
+      let snappedX = false, snappedY = false
+      for (const tx of xTargets) { const d = Math.abs(lx - tx); if (d < bestDX) { bestDX = d; lx = tx; snappedX = true } }
+      for (const ty of yTargets) { const d = Math.abs(ly - ty); if (d < bestDY) { bestDY = d; ly = ty; snappedY = true } }
+
+      // Keep exact value when snapped to a target; otherwise round to the 5mm grid
+      const moved = { x: snappedX ? lx : snap(lx, GRID), y: snappedY ? ly : snap(ly, GRID) }
+      setSnapGuides({
+        x: snappedX ? room.x_cm + moved.x : null,
+        y: snappedY ? room.y_cm + moved.y : null,
+      })
       const newPts = pts.map((p, i) => (i === idx ? moved : { ...p }))
       setDragPolyPts(newPts)
       return
