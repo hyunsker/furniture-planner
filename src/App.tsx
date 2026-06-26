@@ -98,6 +98,17 @@ function computeEdgeSnap(
     ys.push({ val: ob,       guide: ob  })
     ys.push({ val: ot - rh,  guide: ot  })
     ys.push({ val: ob - rh,  guide: ob  })
+    // Also align to the actual drawn wall vertices of L / poly / polyline rooms
+    const sd = o.shape_data
+    if (sd && (sd.type === 'poly' || sd.type === 'polyline')) {
+      for (const p of sd.points) {
+        const gx = o.x_cm + p.x, gy = o.y_cm + p.y
+        xs.push({ val: gx, guide: gx })
+        xs.push({ val: gx - rw, guide: gx })
+        ys.push({ val: gy, guide: gy })
+        ys.push({ val: gy - rh, guide: gy })
+      }
+    }
   }
 
   let bestX = rawX, guideX: number | null = null, dxBest = SNAP_DIST_CM

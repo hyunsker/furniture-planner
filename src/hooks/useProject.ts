@@ -4,6 +4,13 @@ import type { Project, Room, ShapeData, RoomCorner } from '../types'
 
 const COLORS = ['blue', 'green', 'purple', 'yellow', 'cyan', 'orange', 'pink']
 
+// Remove duplicate rooms that share the same id (can happen from realtime echoes)
+function dedupeById(arr: Room[]): Room[] {
+  const map = new Map<string, Room>()
+  for (const r of arr) map.set(r.id, r)
+  return [...map.values()]
+}
+
 export function useProject(shareCode: string | null) {
   const [project, setProject] = useState<Project | null>(null)
   const [rooms, setRooms]     = useState<Room[]>([])
@@ -66,18 +73,25 @@ export function useProject(shareCode: string | null) {
   async function loadRooms(projectId: string) {
     const { data } = await supabase
       .from('rooms').select('*').eq('project_id', projectId).order('order_index')
-    if (data) setRooms(data)
+    if (data) setRooms(dedupeById(data))
   }
 
-  // Realtime subscriptions
+  // Treat both INSERT and UPDATE as an upsert-by-id so a room is never listed twice
+  function upsertRoom(prev: Room[], room: Room): Room[] {
+    return prev.some(r => r.id === room.id)
+      ? prev.map(r => r.id === room.id ? room : r)
+      : [...prev, room]
+  }
+
+  // Realtime subscriptions — keyed on project.id so it doesn't re-subscribe (and
+  // re-deliver INSERT events, causing duplicates) every time the project object changes.
+  const projectId = project?.id
   useEffect(() => {
-    if (!project) return
-    const channel = supabase.channel(`project-${project.id}`)
+    if (!projectId) return
+    const channel = supabase.channel(`project-${projectId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, payload => {
-        if (payload.eventType === 'INSERT')
-          setRooms(prev => [...prev, payload.new as Room])
-        else if (payload.eventType === 'UPDATE')
-          setRooms(prev => prev.map(r => r.id === (payload.new as Room).id ? payload.new as Room : r))
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE')
+          setRooms(prev => upsertRoom(prev, payload.new as Room))
         else if (payload.eventType === 'DELETE')
           setRooms(prev => prev.filter(r => r.id !== (payload.old as Room).id))
       })
@@ -86,7 +100,7 @@ export function useProject(shareCode: string | null) {
       })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [project])
+  }, [projectId])
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
   async function addRoom(
