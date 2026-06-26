@@ -184,6 +184,9 @@ export default function App() {
   const [editingRoom,   setEditingRoom]   = useState<Room | null>(null)
   // Placed furniture selection on the main plan (for rotate / flip / delete)
   const [selFurn,       setSelFurn]       = useState<{ roomId: string; itemId: string } | null>(null)
+  // Live drag of a placed furniture item on the main plan
+  const [furnDrag,      setFurnDrag]      = useState<{ roomId: string; itemId: string; x: number; y: number } | null>(null)
+  const furnDragRef = useRef<{ ox: number; oy: number; w: number; h: number; moved: boolean } | null>(null)
   const [detailRoom,    setDetailRoom]    = useState<Room | null>(null)
   // Furniture is stored per-room in Supabase (rooms.furniture) so both partners see it.
   const roomFurniture: Record<string, FurnitureItem[]> = {}
@@ -1661,14 +1664,17 @@ export default function App() {
                         {/* Furniture inside (clipped to shape) */}
                         <g clipPath={`url(#${clipId})`}>
                           {furniture.map(item => {
-                            const cxF = item.x + item.w / 2, cyF = item.y + item.h / 2
+                            const dragging = furnDrag?.itemId === item.id
+                            const ix = dragging ? furnDrag!.x : item.x
+                            const iy = dragging ? furnDrag!.y : item.y
+                            const cxF = ix + item.w / 2, cyF = iy + item.h / 2
                             const baseT = item.typeId.split('-')[0]
                             const noBg = baseT === 'door' || baseT === 'window'  // doors/windows: transparent (no white box)
                             const tf = `rotate(${item.rotation}, ${cxF}, ${cyF})${item.flip ? ` matrix(-1,0,0,1,${2 * cxF},0)` : ''}`
                             return (
                               <g key={item.id} transform={tf}>
-                                {!noBg && <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={1} fill="white" fillOpacity="0.7"/>}
-                                <g transform={`translate(${item.x}, ${item.y})`}>
+                                {!noBg && <rect x={ix} y={iy} width={item.w} height={item.h} rx={1} fill="white" fillOpacity="0.7"/>}
+                                <g transform={`translate(${ix}, ${iy})`}>
                                   <FurnitureSymbol type={item.typeId} w={item.w} h={item.h} stroke={c.border} strokeWidth={furnSwCm}/>
                                 </g>
                               </g>
@@ -2135,20 +2141,54 @@ export default function App() {
                 {/* Placed-furniture selection overlays (click to select for rotate/flip) */}
                 {!placingItem && !wallMode && rooms.map(room =>
                   (roomFurniture[room.id] ?? []).map(item => {
-                    const left = (room.x_cm + item.x) * scale
-                    const top  = (room.y_cm + item.y) * scale
+                    const dragging = furnDrag?.itemId === item.id
+                    const ix = dragging ? furnDrag!.x : item.x
+                    const iy = dragging ? furnDrag!.y : item.y
+                    const left = (room.x_cm + ix) * scale
+                    const top  = (room.y_cm + iy) * scale
                     const w = item.w * scale, h = item.h * scale
                     const isSel = selFurn?.itemId === item.id
                     return (
                       <div
                         key={`fo-${item.id}`}
-                        onPointerDown={e => { e.stopPropagation(); setSelFurn({ roomId: room.id, itemId: item.id }); setSelectedId(null); setMultiSel([]) }}
+                        onPointerDown={e => {
+                          e.stopPropagation()
+                          setSelFurn({ roomId: room.id, itemId: item.id }); setSelectedId(null); setMultiSel([])
+                          if (!canvasRef.current) return
+                          const rect = canvasRef.current.getBoundingClientRect()
+                          const cx = (e.clientX - rect.left) / scale, cy = (e.clientY - rect.top) / scale
+                          furnDragRef.current = { ox: cx - (room.x_cm + item.x), oy: cy - (room.y_cm + item.y), w: item.w, h: item.h, moved: false }
+                          setFurnDrag({ roomId: room.id, itemId: item.id, x: item.x, y: item.y })
+                          ;(e.target as Element).setPointerCapture(e.pointerId)
+                        }}
+                        onPointerMove={e => {
+                          const fdr = furnDragRef.current
+                          if (!fdr || !canvasRef.current) return
+                          const rect = canvasRef.current.getBoundingClientRect()
+                          const cx = (e.clientX - rect.left) / scale, cy = (e.clientY - rect.top) / scale
+                          let lx = cx - fdr.ox - room.x_cm
+                          let ly = cy - fdr.oy - room.y_cm
+                          lx = snap(clamp(lx, 0, Math.max(0, room.width_cm - fdr.w)), GRID)
+                          ly = snap(clamp(ly, 0, Math.max(0, room.height_cm - fdr.h)), GRID)
+                          fdr.moved = true
+                          setFurnDrag(fd => fd ? { ...fd, x: lx, y: ly } : null)
+                        }}
+                        onPointerUp={() => {
+                          const fdr = furnDragRef.current
+                          if (fdr?.moved && furnDrag) {
+                            const items = (roomFurniture[furnDrag.roomId] ?? []).map(i => i.id === furnDrag.itemId ? { ...i, x: furnDrag.x, y: furnDrag.y } : i)
+                            saveFurniture(furnDrag.roomId, items)
+                          }
+                          furnDragRef.current = null
+                          setFurnDrag(null)
+                        }}
                         onClick={e => e.stopPropagation()}
                         style={{
                           position: 'absolute', left, top, width: w, height: h,
-                          zIndex: isSel ? 45 : 16, cursor: 'pointer',
+                          zIndex: isSel ? 45 : 16, cursor: dragging ? 'grabbing' : 'grab',
                           border: isSel ? '1.5px dashed #6366f1' : '1px solid transparent',
                           borderRadius: 2, background: isSel ? 'rgba(99,102,241,0.06)' : 'transparent',
+                          touchAction: 'none',
                         }}
                       />
                     )
@@ -2156,7 +2196,7 @@ export default function App() {
                 )}
 
                 {/* Selected furniture toolbar: rotate / flip / delete */}
-                {selFurn && !drag && (() => {
+                {selFurn && !drag && !furnDrag && (() => {
                   const room = rooms.find(r => r.id === selFurn.roomId)
                   const item = (roomFurniture[selFurn.roomId] ?? []).find(i => i.id === selFurn.itemId)
                   if (!room || !item) return null
