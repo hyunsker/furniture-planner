@@ -38,6 +38,7 @@ export interface Room {
   order_index: number
   shape_data: ShapeData
   furniture?: FurnitureItem[]
+  group_id?: string | null
 }
 
 /** Returns SVG polygon points string for a room shape (in given w×h coordinate space) */

@@ -116,7 +116,13 @@ const ROOM_COLORS: Record<string, { border: string; fill: string; text: string }
 }
 const DEFAULT_COLOR = { border: '#64748b', fill: '#f8fafc', text: '#334155' }
 
-type DragState = { id: string; ox: number; oy: number; lx: number; ly: number } | null
+// Unified wall line hierarchy (closed rooms + open walls share the same weight/color)
+const WALL_COLOR = '#475569'
+const WALL_W = 4.5      // px, normal
+const WALL_W_SEL = 5.5  // px, when selected
+
+type DragMember = { id: string; x0: number; y0: number }
+type DragState = { id: string; ox: number; oy: number; lx: number; ly: number; x0: number; y0: number; members: DragMember[] } | null
 
 const CANVAS_W = 820
 const CANVAS_H = 600
@@ -126,6 +132,8 @@ export default function App() {
   const { project, rooms, loading, error, addRoom, updateRoom, deleteRoom, rotateRoom, updateApartment, undo, canUndo } = useProject(shareCode)
 
   const [selectedId,    setSelectedId]    = useState<string | null>(null)
+  const [multiSel,      setMultiSel]      = useState<string[]>([])   // rooms picked for grouping
+  const [multiMode,     setMultiMode]     = useState(false)          // mobile multi-select toggle
   const [drag,          setDrag]          = useState<DragState>(null)
   const [copied,        setCopied]        = useState(false)
 
@@ -318,6 +326,7 @@ export default function App() {
       if (e.key === 'Escape') {
         if (placingItem) { setPlacingItem(null); setPlacingCursor(null); return }
         if (editingWallLen) { setEditingWallLen(null); return }
+        if (multiMode || multiSel.length) { setMultiMode(false); setMultiSel([]); return }
         if (wallMode) { setTool('select'); setWallPts([]); setWallCursor(null) }
       }
       // Enter: finish walls (open or closed)
@@ -344,7 +353,7 @@ export default function App() {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [wallMode, editingWallLen, placingItem, wallPts, rooms.length, addRoom, finishWalls, undo])
+  }, [wallMode, editingWallLen, placingItem, wallPts, rooms.length, addRoom, finishWalls, undo, multiMode, multiSel.length])
 
 
   // ── Drag handlers ────────────────────────────────────────────────────────
@@ -352,13 +361,27 @@ export default function App() {
     if (wallMode) return  // wall mode: clicks go to canvas onClick instead
     e.stopPropagation()
     if (!canvasRef.current) return
+
+    // Multi-select mode: tapping/clicking toggles membership instead of dragging
+    if (multiMode || e.shiftKey || e.metaKey || e.ctrlKey) {
+      setMultiSel(prev => prev.includes(room.id) ? prev.filter(id => id !== room.id) : [...prev, room.id])
+      setSelectedId(room.id)
+      return
+    }
+
     const rect = canvasRef.current.getBoundingClientRect()
     const cx = (e.clientX - rect.left) / scale
     const cy = (e.clientY - rect.top)  / scale
-    setDrag({ id: room.id, ox: cx - room.x_cm, oy: cy - room.y_cm, lx: room.x_cm, ly: room.y_cm })
+    // If this room belongs to a locked group, drag all members together
+    const members: DragMember[] = (room.group_id
+      ? rooms.filter(r => r.group_id === room.group_id)
+      : [room]
+    ).map(r => ({ id: r.id, x0: r.x_cm, y0: r.y_cm }))
+    setDrag({ id: room.id, ox: cx - room.x_cm, oy: cy - room.y_cm, lx: room.x_cm, ly: room.y_cm, x0: room.x_cm, y0: room.y_cm, members })
     setSelectedId(room.id)
+    setMultiSel([])
     ;(e.target as Element).setPointerCapture(e.pointerId)
-  }, [scale, wallMode])
+  }, [scale, wallMode, multiMode, rooms])
 
   const canvasPointerMove = useCallback((e: React.PointerEvent) => {
     if (!canvasRef.current) return
@@ -454,7 +477,13 @@ export default function App() {
       return
     }
     if (drag) {
-      updateRoom(drag.id, { x_cm: drag.lx, y_cm: drag.ly })
+      const dx = drag.lx - drag.x0
+      const dy = drag.ly - drag.y0
+      if (drag.members.length > 1) {
+        for (const m of drag.members) updateRoom(m.id, { x_cm: m.x0 + dx, y_cm: m.y0 + dy })
+      } else {
+        updateRoom(drag.id, { x_cm: drag.lx, y_cm: drag.ly })
+      }
       setDrag(null)
     } else if (drawState) {
       const w = Math.abs(drawState.ex - drawState.sx)
@@ -471,6 +500,19 @@ export default function App() {
       setDrawState(null)
     }
   }, [drag, drawState, updateRoom, vertexDrag, dragPolyPts, rooms])
+
+  // ── Grouping (lock rooms to move together) ─────────────────────────────────
+  function lockGroup() {
+    if (multiSel.length < 2) return
+    const gid = `g-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+    for (const id of multiSel) updateRoom(id, { group_id: gid })
+    setMultiSel([])
+    setMultiMode(false)
+  }
+  function unlockGroup(gid: string | null | undefined) {
+    if (!gid) return
+    for (const r of rooms.filter(x => x.group_id === gid)) updateRoom(r.id, { group_id: null })
+  }
 
   // ── Share ─────────────────────────────────────────────────────────────────
   async function handleShare() {
@@ -1131,8 +1173,27 @@ export default function App() {
                 {!isMobile && '되돌리기'}
               </button>
               {!isMobile && (
+                <button
+                  onClick={() => { setMultiMode(m => !m); setMultiSel([]); setTool('select') }}
+                  title="여러 방 선택해서 묶기"
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-all border ${
+                    multiMode
+                      ? 'bg-amber-500 border-amber-500 text-white'
+                      : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-300'
+                  }`}
+                >
+                  <svg width="13" height="13" viewBox="0 0 20 20" fill="none">
+                    <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8"/>
+                    <rect x="10" y="10" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8"/>
+                  </svg>
+                  다중선택
+                </button>
+              )}
+              {!isMobile && (
                 <span className="text-[11px] text-gray-400">
-                  {wallMode ? '클릭 → 꼭짓점 · Esc 취소' : '더블클릭 = 가구배치 · 드래그 = 이동'}
+                  {wallMode ? '클릭 → 꼭짓점 · Esc 취소'
+                    : multiMode ? '방을 눌러 여러 개 선택 → 함께 묶기'
+                    : 'Shift+클릭 = 다중선택 · 드래그 = 이동'}
                 </span>
               )}
             </div>
@@ -1296,12 +1357,17 @@ export default function App() {
                 }}
               >
                 {rooms.map(room => {
-                  const isDragging = drag?.id === room.id
-                  const px  = (isDragging ? drag.lx : room.x_cm) * scale
-                  const py  = (isDragging ? drag.ly : room.y_cm) * scale
+                  const dragMem = drag?.members.find(m => m.id === room.id)
+                  const isDragging = !!dragMem
+                  const dragDX = drag ? drag.lx - drag.x0 : 0
+                  const dragDY = drag ? drag.ly - drag.y0 : 0
+                  const px  = (dragMem ? dragMem.x0 + dragDX : room.x_cm) * scale
+                  const py  = (dragMem ? dragMem.y0 + dragDY : room.y_cm) * scale
                   const pw  = room.width_cm  * scale
                   const ph  = room.height_cm * scale
                   const isSel = selectedId === room.id
+                  const inMulti = multiSel.includes(room.id)
+                  const isGrouped = !!room.group_id
                   const c   = ROOM_COLORS[room.color] ?? DEFAULT_COLOR
                   const furniture = roomFurniture[room.id] ?? []
 
@@ -1312,7 +1378,9 @@ export default function App() {
                     const PAD = 16  // px padding so thin lines stay clickable
                     const ptsPx = shape.points.map(p => ({ x: p.x * scale + PAD, y: p.y * scale + PAD }))
                     const pathStr = ptsPx.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
-                    const wallColor = isSel ? '#6366f1' : '#475569'
+                    const hi = isSel || inMulti
+                    const wallColor = inMulti ? '#f59e0b' : isSel ? '#6366f1' : WALL_COLOR
+                    const wallPx = hi ? WALL_W_SEL : WALL_W
                     return (
                       <div
                         key={room.id}
@@ -1333,13 +1401,20 @@ export default function App() {
                           {/* fat transparent hit area */}
                           <path d={pathStr} fill="none" stroke="transparent" strokeWidth={14} strokeLinecap="round"/>
                           {/* visible wall */}
-                          <path d={pathStr} fill="none" stroke={wallColor} strokeWidth={isSel ? 6 : 5}
+                          <path d={pathStr} fill="none" stroke={wallColor} strokeWidth={wallPx}
                             strokeLinecap="round" strokeLinejoin="round"/>
                           {/* endpoint caps */}
                           {ptsPx.map((p, i) => (
                             <circle key={i} cx={p.x} cy={p.y} r={isSel ? 3 : 2.5} fill="white" stroke={wallColor} strokeWidth={1.5}/>
                           ))}
                         </svg>
+                        {(isGrouped || inMulti) && (
+                          <div style={{
+                            position: 'absolute', left: PAD - 2, top: PAD - 2,
+                            fontSize: 13, lineHeight: 1, pointerEvents: 'none', zIndex: 30,
+                            filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.3))',
+                          }}>{inMulti ? '☑️' : '🔒'}</div>
+                        )}
                         {hoveredRoomId === room.id && !drag && (
                           <div style={{
                             position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
@@ -1353,9 +1428,11 @@ export default function App() {
                   }
 
                   const clipId = `clip-${room.id}`
-                  const borderColor = isSel ? '#6366f1' : c.border
-                  const swPx = 1.5  // stroke-width in px
-                  const swCm = swPx / scale  // stroke-width in cm for viewBox
+                  const hi = isSel || inMulti
+                  const borderColor = inMulti ? '#f59e0b' : isSel ? '#6366f1' : WALL_COLOR
+                  const wallPxClosed = hi ? WALL_W_SEL : WALL_W
+                  const swCm = wallPxClosed / scale  // wall stroke-width in cm for viewBox
+                  const furnSwCm = 1.5 / scale       // thin stroke for furniture symbols
 
                   return (
                     <div
@@ -1371,12 +1448,21 @@ export default function App() {
                         cursor: isDragging ? 'grabbing' : 'grab',
                         zIndex: isDragging ? 20 : isSel ? 10 : 1,
                         userSelect: 'none',
-                        filter: isSel
+                        filter: inMulti
+                          ? 'drop-shadow(0 0 4px rgba(245,158,11,0.5))'
+                          : isSel
                           ? 'drop-shadow(0 0 4px rgba(99,102,241,0.4))'
                           : 'drop-shadow(0 1px 2px rgba(0,0,0,0.08))',
                         transition: isDragging ? 'none' : 'filter 0.15s',
                       }}
                     >
+                      {(isGrouped || inMulti) && (
+                        <div style={{
+                          position: 'absolute', left: 2, top: 2,
+                          fontSize: 13, lineHeight: 1, pointerEvents: 'none', zIndex: 30,
+                          filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.3))',
+                        }}>{inMulti ? '☑️' : '🔒'}</div>
+                      )}
                       {/* SVG draws the actual shape (polygon for L, rect for regular) */}
                       <svg
                         width={pw} height={ph}
@@ -1395,7 +1481,7 @@ export default function App() {
                           points={getRoomPoints(room.width_cm, room.height_cm, shape)}
                           fill={c.fill}
                           stroke={borderColor}
-                          strokeWidth={swCm * (isSel ? 2.5 : 1.5)}
+                          strokeWidth={swCm}
                           strokeLinejoin="round"
                         />
 
@@ -1405,7 +1491,7 @@ export default function App() {
                             <g key={item.id} transform={`rotate(${item.rotation}, ${item.x + item.w / 2}, ${item.y + item.h / 2})`}>
                               <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={1} fill="white" fillOpacity="0.7"/>
                               <g transform={`translate(${item.x}, ${item.y})`}>
-                                <FurnitureSymbol type={item.typeId} w={item.w} h={item.h} stroke={c.border} strokeWidth={swCm * 1.5}/>
+                                <FurnitureSymbol type={item.typeId} w={item.w} h={item.h} stroke={c.border} strokeWidth={furnSwCm}/>
                               </g>
                             </g>
                           ))}
@@ -1983,6 +2069,14 @@ export default function App() {
                       >
                         <RotateCw size={10}/> 회전
                       </button>
+                      {room.group_id && (
+                        <button
+                          onClick={() => unlockGroup(room.group_id)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] rounded-lg bg-white border border-amber-200 text-amber-500 hover:bg-amber-50 shadow-md transition-colors whitespace-nowrap"
+                        >
+                          🔓 그룹해제
+                        </button>
+                      )}
                       <button
                         onClick={() => deleteRoom(room.id)}
                         className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] rounded-lg bg-white border border-red-100 text-red-400 hover:bg-red-50 shadow-md transition-colors whitespace-nowrap"
@@ -1992,6 +2086,33 @@ export default function App() {
                     </div>
                   )
                 })()}
+
+                {/* Multi-select group action bar (bottom-center) */}
+                {multiSel.length >= 2 && !drag && (
+                  <div
+                    onClick={e => e.stopPropagation()}
+                    style={{
+                      position: 'absolute', left: '50%', bottom: 12, transform: 'translateX(-50%)',
+                      zIndex: 120, display: 'flex', gap: 6, alignItems: 'center',
+                      background: 'white', padding: '8px 10px', borderRadius: 14,
+                      boxShadow: '0 6px 24px rgba(0,0,0,0.18)', border: '1px solid #fde68a',
+                    }}
+                  >
+                    <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>{multiSel.length}개 선택됨</span>
+                    <button
+                      onClick={lockGroup}
+                      className="flex items-center gap-1 px-3 py-1.5 text-[12px] rounded-lg bg-amber-500 text-white hover:bg-amber-600 font-semibold whitespace-nowrap"
+                    >
+                      🔒 함께 묶기
+                    </button>
+                    <button
+                      onClick={() => { setMultiSel([]); setMultiMode(false) }}
+                      className="px-2.5 py-1.5 text-[12px] rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 whitespace-nowrap"
+                    >
+                      취소
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2051,6 +2172,22 @@ export default function App() {
           })}
 
           <div style={{ width: 1, background: '#eef2ff', margin: '2px 2px' }}/>
+
+          {/* Multi-select toggle */}
+          <button
+            onClick={() => { setMultiMode(m => !m); setMultiSel([]); setTool('select') }}
+            style={{
+              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+              padding: '8px 0', borderRadius: 12, border: 'none',
+              background: multiMode ? '#f59e0b' : '#f8fafc', color: multiMode ? 'white' : '#475569', fontSize: 11, fontWeight: 600,
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6"/>
+              <rect x="10" y="10" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6"/>
+            </svg>
+            다중선택
+          </button>
 
           {/* Undo */}
           <button

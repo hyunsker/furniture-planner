@@ -6,3 +6,7 @@ ALTER TABLE rooms
 -- 출입문(문/창문)도 방마다 저장 → 실시간 공유
 ALTER TABLE rooms
   ADD COLUMN IF NOT EXISTS doors JSONB DEFAULT '[]'::jsonb;
+
+-- 방 그룹(잠금)으로 묶어 함께 이동 → 실시간 공유
+ALTER TABLE rooms
+  ADD COLUMN IF NOT EXISTS group_id TEXT;
