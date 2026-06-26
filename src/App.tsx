@@ -1212,6 +1212,59 @@ export default function App() {
             </div>
           </div>
 
+          {/* Contextual room toolbar – above the plan so it never overlaps dimensions */}
+          {selectedId && !drag && multiSel.length === 0 && (() => {
+            const room = rooms.find(r => r.id === selectedId)
+            if (!room) return null
+            return (
+              <div
+                onClick={e => e.stopPropagation()}
+                onPointerDown={e => e.stopPropagation()}
+                className="flex items-center gap-1.5 mb-2 px-2 py-1.5 rounded-xl bg-white border border-gray-200 shadow-sm overflow-x-auto"
+                style={{ width: cW }}
+              >
+                <span className="text-[12px] font-semibold text-gray-700 px-1.5 shrink-0 max-w-[100px] truncate">{room.name}</span>
+                <div className="w-px h-5 bg-gray-200 shrink-0"/>
+                <button
+                  onClick={() => setDetailRoom(room)}
+                  className="flex items-center gap-1 px-3 py-2 text-[12px] rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 transition-colors font-medium whitespace-nowrap shrink-0"
+                >
+                  <svg width="12" height="12" viewBox="0 0 20 20" fill="none">
+                    <rect x="2" y="9" width="8" height="6" rx="1" stroke="currentColor" strokeWidth="1.8"/>
+                    <rect x="12" y="5" width="6" height="5" rx="1" stroke="currentColor" strokeWidth="1.8"/>
+                  </svg>
+                  가구 배치
+                </button>
+                <button
+                  onClick={() => setNamePrompt({ kind: 'rename', roomId: room.id, initial: room.name })}
+                  className="flex items-center gap-1 px-3 py-2 text-[12px] rounded-lg bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors whitespace-nowrap shrink-0"
+                >
+                  ✏️ 이름
+                </button>
+                <button
+                  onClick={() => rotateRoom(room.id)}
+                  className="flex items-center gap-1 px-3 py-2 text-[12px] rounded-lg bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors whitespace-nowrap shrink-0"
+                >
+                  <RotateCw size={12}/> 회전
+                </button>
+                {room.group_id && (
+                  <button
+                    onClick={() => unlockGroup(room.group_id)}
+                    className="flex items-center gap-1 px-3 py-2 text-[12px] rounded-lg bg-amber-50 border border-amber-200 text-amber-600 hover:bg-amber-100 transition-colors whitespace-nowrap shrink-0"
+                  >
+                    🔓 그룹해제
+                  </button>
+                )}
+                <button
+                  onClick={() => deleteRoom(room.id)}
+                  className="flex items-center gap-1 px-3 py-2 text-[12px] rounded-lg bg-red-50 border border-red-100 text-red-500 hover:bg-red-100 transition-colors whitespace-nowrap shrink-0 ml-auto"
+                >
+                  <Trash2 size={12}/> 삭제
+                </button>
+              </div>
+            )
+          })()}
+
             {/* Floor plan */}
             <div
               className="relative rounded-xl bg-white shadow-xl"
@@ -1768,7 +1821,6 @@ export default function App() {
                         const next = pts[(i + 1) % pts.length]
                         const mx = rx + (pt.x + next.x) / 2 * scale
                         const my = ry + (pt.y + next.y) / 2 * scale
-                        const isHov = hoveredEdgeIdx === i
                         const segLen = Math.round(Math.hypot(next.x - pt.x, next.y - pt.y))
                         const isH = Math.abs(next.x - pt.x) >= Math.abs(next.y - pt.y)
                         const labelY = my - (isH ? 22 : 4) - 9
@@ -1805,8 +1857,8 @@ export default function App() {
                                   onPointerDown={e => e.stopPropagation()}
                                   style={{
                                     position: 'absolute',
-                                    left: mx - 60,
-                                    top: labelY - 8,
+                                    left: Math.max(4, Math.min(mx - 65, cW - 150)),
+                                    top: Math.max(4, labelY - 8),
                                     zIndex: 80,
                                     background: 'white',
                                     border: '1.5px solid #6366f1',
@@ -1882,43 +1934,6 @@ export default function App() {
                               )
                             })()}
 
-                            {/* × delete button (shown on hover, right side) */}
-                            {canDelete && isHov && !isEditingThis && (
-                              <div
-                                onMouseEnter={() => setHoveredEdgeIdx(i)}
-                                onMouseLeave={() => setHoveredEdgeIdx(null)}
-                                onPointerDown={e => e.stopPropagation()}
-                                onClick={e => {
-                                  e.stopPropagation()
-                                  const n = pts.length
-                                  const j = (i + 1) % n
-                                  const newPts = pts.filter((_, k) => k !== i && k !== j)
-                                  if (newPts.length < minPts) return
-                                  commitPolyShape(room, newPts, shapeType)
-                                  setHoveredEdgeIdx(null)
-                                }}
-                                title="이 벽 삭제"
-                                style={{
-                                  position: 'absolute',
-                                  left: mx + 18,
-                                  top: my - 11,
-                                  width: 22, height: 22,
-                                  borderRadius: '50%',
-                                  background: '#ef4444',
-                                  border: '1.5px solid #dc2626',
-                                  boxShadow: '0 0 0 3px rgba(239,68,68,0.2),0 2px 8px rgba(0,0,0,0.15)',
-                                  cursor: 'pointer',
-                                  zIndex: 52,
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                  userSelect: 'none',
-                                }}
-                              >
-                                <svg width="9" height="9" viewBox="0 0 8 8" fill="none">
-                                  <line x1="1.5" y1="1.5" x2="6.5" y2="6.5" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
-                                  <line x1="6.5" y1="1.5" x2="1.5" y2="6.5" stroke="white" strokeWidth="1.8" strokeLinecap="round"/>
-                                </svg>
-                              </div>
-                            )}
                           </React.Fragment>
                         )
                       })}
@@ -1962,25 +1977,6 @@ export default function App() {
                         )
                       })}
 
-                      {/* Tooltip */}
-                      {hoveredEdgeIdx !== null && (() => {
-                        const pt = pts[hoveredEdgeIdx]
-                        const next = pts[(hoveredEdgeIdx + 1) % pts.length]
-                        const mx = rx + (pt.x + next.x) / 2 * scale
-                        const my = ry + (pt.y + next.y) / 2 * scale
-                        return (
-                          <div style={{
-                            position: 'absolute', left: mx + 14, top: my - 14,
-                            background: '#ef4444', color: 'white',
-                            fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 7,
-                            boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
-                            whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 60,
-                          }}>
-                            이 벽 삭제
-                          </div>
-                        )
-                      })()}
-
                       {/* Bottom hint */}
                       <div style={{
                         position: 'absolute', bottom: 10, left: '50%', transform: 'translateX(-50%)',
@@ -1990,11 +1986,9 @@ export default function App() {
                         boxShadow: '0 2px 8px rgba(99,102,241,0.12)',
                         whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 40,
                       }}>
-                        <span>{isOpen ? '📐 열린 벽 편집' : '🔵 점 드래그 = 꼭짓점 이동'}</span>
+                        <span>🔵 점 드래그 = 꼭짓점 이동</span>
                         <span style={{ color: '#d1d5db' }}>|</span>
-                        <span>📏 숫자 클릭 = 길이 수정</span>
-                        <span style={{ color: '#d1d5db' }}>|</span>
-                        <span>🔴 × = 벽 삭제</span>
+                        <span>📏 선/숫자 탭 = 길이·삭제</span>
                       </div>
                     </>
                   )
@@ -2044,67 +2038,6 @@ export default function App() {
                     )}
                   </svg>
                 )}
-
-                {/* Action bar – rendered at canvas level so it's never clipped */}
-                {selectedId && !drag && (() => {
-                  const room = rooms.find(r => r.id === selectedId)
-                  if (!room) return null
-                  const px = room.x_cm * scale
-                  const py = room.y_cm * scale
-                  const ph = room.height_cm * scale
-                  // If room is too close to top, show bar below the room instead
-                  const showBelow = py < 48
-                  return (
-                    <div
-                      style={{
-                        position: 'absolute',
-                        left: px,
-                        top: showBelow ? py + ph + 6 : py - 40,
-                        zIndex: 100,
-                        display: 'flex',
-                        gap: 4,
-                      }}
-                      onClick={e => e.stopPropagation()}
-                    >
-                      <button
-                        onClick={() => setDetailRoom(room)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 shadow-lg transition-colors font-medium whitespace-nowrap"
-                      >
-                        <svg width="11" height="11" viewBox="0 0 20 20" fill="none">
-                          <rect x="2" y="9" width="8" height="6" rx="1" stroke="currentColor" strokeWidth="1.8"/>
-                          <rect x="12" y="5" width="6" height="5" rx="1" stroke="currentColor" strokeWidth="1.8"/>
-                        </svg>
-                        가구 배치
-                      </button>
-                      <button
-                        onClick={() => setNamePrompt({ kind: 'rename', roomId: room.id, initial: room.name })}
-                        className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 shadow-md transition-colors whitespace-nowrap"
-                      >
-                        ✏️ 이름
-                      </button>
-                      <button
-                        onClick={() => rotateRoom(room.id)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 shadow-md transition-colors whitespace-nowrap"
-                      >
-                        <RotateCw size={10}/> 회전
-                      </button>
-                      {room.group_id && (
-                        <button
-                          onClick={() => unlockGroup(room.group_id)}
-                          className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] rounded-lg bg-white border border-amber-200 text-amber-500 hover:bg-amber-50 shadow-md transition-colors whitespace-nowrap"
-                        >
-                          🔓 그룹해제
-                        </button>
-                      )}
-                      <button
-                        onClick={() => deleteRoom(room.id)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] rounded-lg bg-white border border-red-100 text-red-400 hover:bg-red-50 shadow-md transition-colors whitespace-nowrap"
-                      >
-                        <Trash2 size={10}/> 삭제
-                      </button>
-                    </div>
-                  )
-                })()}
 
                 {/* Multi-select group action bar (bottom-center) */}
                 {multiSel.length >= 2 && !drag && (
