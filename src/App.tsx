@@ -2143,6 +2143,7 @@ export default function App() {
                       <div
                         key={`fo-${item.id}`}
                         onPointerDown={e => { e.stopPropagation(); setSelFurn({ roomId: room.id, itemId: item.id }); setSelectedId(null); setMultiSel([]) }}
+                        onClick={e => e.stopPropagation()}
                         style={{
                           position: 'absolute', left, top, width: w, height: h,
                           zIndex: isSel ? 45 : 16, cursor: 'pointer',
