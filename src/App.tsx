@@ -124,6 +124,58 @@ function computeEdgeSnap(
   return { x: bestX, y: bestY, guideX, guideY }
 }
 
+// ── Door / window wall snapping ──────────────────────────────────────────────
+function distPointSeg(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax, dy = by - ay
+  const len2 = dx * dx + dy * dy || 1
+  let t = ((px - ax) * dx + (py - ay) * dy) / len2
+  t = Math.max(0, Math.min(1, t))
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+}
+
+function roomLocalPoints(room: Room): { x: number; y: number }[] {
+  const sd = room.shape_data
+  if (sd && (sd.type === 'poly' || sd.type === 'polyline')) return sd.points
+  return getRoomPoints(room.width_cm, room.height_cm, sd ?? { type: 'rect' })
+    .split(' ')
+    .map(s => { const [x, y] = s.split(',').map(Number); return { x, y } })
+}
+
+// Snap a door/window onto the nearest wall of the room, centred & auto-oriented.
+function snapDoorToWall(room: Room, lx: number, ly: number, fw: number, fh: number): { x: number; y: number; rotation: number } {
+  const pts = roomLocalPoints(room)
+  const isOpen = room.shape_data?.type === 'polyline'
+  const n = pts.length
+  const cnt = isOpen ? n - 1 : n
+  let best = Infinity, edge: { a: { x: number; y: number }; b: { x: number; y: number } } | null = null
+  for (let i = 0; i < cnt; i++) {
+    const a = pts[i], b = pts[(i + 1) % n]
+    const d = distPointSeg(lx, ly, a.x, a.y, b.x, b.y)
+    if (d < best) { best = d; edge = { a, b } }
+  }
+  if (!edge) {
+    return {
+      x: snap(clamp(lx - fw / 2, 0, Math.max(0, room.width_cm - fw)), GRID),
+      y: snap(clamp(ly - fh / 2, 0, Math.max(0, room.height_cm - fh)), GRID),
+      rotation: 0,
+    }
+  }
+  const { a, b } = edge
+  const horiz = Math.abs(b.y - a.y) <= Math.abs(b.x - a.x)
+  if (horiz) {
+    const Y = a.y, minX = Math.min(a.x, b.x), maxX = Math.max(a.x, b.x)
+    let c = clamp(lx, minX, maxX)
+    const lo = minX + fw / 2, hi = maxX - fw / 2
+    if (lo <= hi) c = clamp(c, lo, hi)
+    return { x: snap(c - fw / 2, GRID), y: snap(Y - fh / 2, GRID), rotation: 0 }
+  }
+  const X = a.x, minY = Math.min(a.y, b.y), maxY = Math.max(a.y, b.y)
+  let c = clamp(ly, minY, maxY)
+  const lo = minY + fw / 2, hi = maxY - fw / 2
+  if (lo <= hi) c = clamp(c, lo, hi)
+  return { x: snap(X - fw / 2, GRID), y: snap(c - fh / 2, GRID), rotation: 90 }
+}
+
 // Detect shape from wall points and return ShapeData
 
 const ROOM_COLORS: Record<string, { border: string; fill: string; text: string }> = {
@@ -205,6 +257,31 @@ export default function App() {
     if (!selFurn) return
     saveFurniture(selFurn.roomId, (roomFurniture[selFurn.roomId] ?? []).filter(i => i.id !== selFurn.itemId))
     setSelFurn(null)
+  }
+
+  // Place the active catalog item into a room (doors/windows snap to the wall),
+  // then exit placement mode and select what we just dropped (single-shot).
+  const placeFurnitureInRoom = (room: Room, cx: number, cy: number) => {
+    if (!placingItem) return
+    const fw = placingItem.w, fh = placingItem.h
+    const lx = cx - room.x_cm, ly = cy - room.y_cm
+    const base = placingItem.typeId.split('-')[0]
+    const pos = (base === 'door' || base === 'window')
+      ? snapDoorToWall(room, lx, ly, fw, fh)
+      : {
+          x: snap(clamp(lx - fw / 2, 0, Math.max(0, room.width_cm - fw)), GRID),
+          y: snap(clamp(ly - fh / 2, 0, Math.max(0, room.height_cm - fh)), GRID),
+          rotation: 0,
+        }
+    const id = `f-${Date.now()}`
+    const newItem: FurnitureItem = {
+      id, typeId: placingItem.typeId, label: placingItem.name,
+      x: pos.x, y: pos.y, w: fw, h: fh, rotation: pos.rotation,
+    }
+    saveFurniture(room.id, [...(roomFurniture[room.id] ?? []), newItem])
+    setSelFurn({ roomId: room.id, itemId: id })
+    setPlacingItem(null)
+    setPlacingCursor(null)
   }
 
   // Furniture catalog & placement
@@ -420,20 +497,10 @@ export default function App() {
     const cx = (e.clientX - rect.left) / scale
     const cy = (e.clientY - rect.top)  / scale
 
-    // Placement mode (furniture / door / window): stamp into THIS room
+    // Placement mode (furniture / door / window): drop into THIS room
     if (placingItem) {
-      const fw = placingItem.w, fh = placingItem.h
-      const lx = cx - room.x_cm, ly = cy - room.y_cm
-      const newItem: FurnitureItem = {
-        id: `f-${Date.now()}`,
-        typeId: placingItem.typeId,
-        label: placingItem.name,
-        x: snap(clamp(lx - fw / 2, 0, Math.max(0, room.width_cm - fw)), GRID),
-        y: snap(clamp(ly - fh / 2, 0, Math.max(0, room.height_cm - fh)), GRID),
-        w: fw, h: fh, rotation: 0,
-      }
-      saveFurniture(room.id, [...(roomFurniture[room.id] ?? []), newItem])
-      return  // keep placement mode on for repeated stamps; Esc to exit
+      placeFurnitureInRoom(room, cx, cy)
+      return
     }
 
     // Multi-select mode: tapping/clicking toggles membership instead of dragging
@@ -1096,7 +1163,7 @@ export default function App() {
             {placingItem && (
               <div className="mx-2 mb-1 px-3 py-2 rounded-xl bg-indigo-500 text-white">
                 <p className="text-[11px] font-semibold">📍 배치 중: {placingItem.name}</p>
-                <p className="text-[10px] opacity-80">{toMM(placingItem.w)}mm · 방 위를 클릭하세요 · Esc 취소</p>
+                <p className="text-[10px] opacity-80">{toMM(placingItem.w)}mm · 가까운 벽을 클릭하면 자동으로 붙어요 · Esc 취소</p>
               </div>
             )}
             <DoorPanel
@@ -1116,7 +1183,7 @@ export default function App() {
             {placingItem && (
               <div className="mx-2 mb-1 px-3 py-2 rounded-xl bg-indigo-500 text-white">
                 <p className="text-[11px] font-semibold">📍 배치 중: {placingItem.name}</p>
-                <p className="text-[10px] opacity-80">{toMM(placingItem.w)}×{toMM(placingItem.h)}mm · 방 위를 클릭하세요 · Esc 취소</p>
+                <p className="text-[10px] opacity-80">{toMM(placingItem.w)}×{toMM(placingItem.h)}mm · 방을 클릭해 배치 · Esc 취소</p>
               </div>
             )}
             {/* Category pills */}
@@ -1471,26 +1538,13 @@ export default function App() {
                 onPointerUp={canvasPointerUp}
                 onPointerLeave={canvasPointerUp}
                 onClick={e => {
-                  // Furniture placement
+                  // Furniture placement (clicks not landing on a room div)
                   if (placingItem) {
                     const rect = canvasRef.current!.getBoundingClientRect()
                     const cx = (e.clientX - rect.left) / scale
                     const cy = (e.clientY - rect.top)  / scale
                     const room = findRoomAt(cx, cy, rooms)
-                    if (room) {
-                      const fw = placingItem.w, fh = placingItem.h
-                      const lx = cx - room.x_cm, ly = cy - room.y_cm
-                      const newItem: FurnitureItem = {
-                        id: `f-${Date.now()}`,
-                        typeId: placingItem.typeId,
-                        label: placingItem.name,
-                        x: snap(clamp(lx - fw / 2, 0, room.width_cm - fw), GRID),
-                        y: snap(clamp(ly - fh / 2, 0, room.height_cm - fh), GRID),
-                        w: fw, h: fh, rotation: 0,
-                      }
-                      saveFurniture(room.id, [...(roomFurniture[room.id] ?? []), newItem])
-                    }
-                    // Keep placement mode on for multiple placements, Esc to exit
+                    if (room) placeFurnitureInRoom(room, cx, cy)
                     return
                   }
                   if (wallMode) {
@@ -1557,6 +1611,9 @@ export default function App() {
                     const hi = isSel || inMulti
                     const wallColor = inMulti ? '#f59e0b' : isSel ? '#6366f1' : WALL_COLOR
                     const wallPx = hi ? WALL_W_SEL : WALL_W
+                    const clipId = `clip-${room.id}`
+                    const furnSwCm = 1.5 / scale
+                    const ptsCm = shape.points.map(p => `${p.x},${p.y}`).join(' ')
                     return (
                       <div
                         key={room.id}
@@ -1574,6 +1631,48 @@ export default function App() {
                         }}
                       >
                         <svg width={pw + PAD * 2} height={ph + PAD * 2} style={{ position: 'absolute', inset: 0, overflow: 'visible' }}>
+                          <defs>
+                            <clipPath id={clipId}>
+                              <polygon points={ptsCm} />
+                            </clipPath>
+                          </defs>
+                          {/* interior fill (auto-closed) + furniture, drawn in cm space */}
+                          <g transform={`translate(${PAD}, ${PAD}) scale(${scale})`}>
+                            <polygon points={ptsCm} fill={c.fill} fillOpacity={0.85} stroke="none" />
+                            {/* regular furniture (clipped to interior) */}
+                            <g clipPath={`url(#${clipId})`}>
+                              {furniture.filter(it => { const b = it.typeId.split('-')[0]; return b !== 'door' && b !== 'window' }).map(item => {
+                                const dragging = furnDrag?.itemId === item.id
+                                const ix = dragging ? furnDrag!.x : item.x
+                                const iy = dragging ? furnDrag!.y : item.y
+                                const cxF = ix + item.w / 2, cyF = iy + item.h / 2
+                                const tf = `rotate(${item.rotation}, ${cxF}, ${cyF})${item.flip ? ` matrix(-1,0,0,1,${2 * cxF},0)` : ''}`
+                                return (
+                                  <g key={item.id} transform={tf}>
+                                    <rect x={ix} y={iy} width={item.w} height={item.h} rx={1} fill="white" fillOpacity="0.7" />
+                                    <g transform={`translate(${ix}, ${iy})`}>
+                                      <FurnitureSymbol type={item.typeId} w={item.w} h={item.h} stroke={c.border} strokeWidth={furnSwCm} />
+                                    </g>
+                                  </g>
+                                )
+                              })}
+                            </g>
+                            {/* doors & windows on the wall, not clipped */}
+                            {furniture.filter(it => { const b = it.typeId.split('-')[0]; return b === 'door' || b === 'window' }).map(item => {
+                              const dragging = furnDrag?.itemId === item.id
+                              const ix = dragging ? furnDrag!.x : item.x
+                              const iy = dragging ? furnDrag!.y : item.y
+                              const cxF = ix + item.w / 2, cyF = iy + item.h / 2
+                              const tf = `rotate(${item.rotation}, ${cxF}, ${cyF})${item.flip ? ` matrix(-1,0,0,1,${2 * cxF},0)` : ''}`
+                              return (
+                                <g key={item.id} transform={tf}>
+                                  <g transform={`translate(${ix}, ${iy})`}>
+                                    <FurnitureSymbol type={item.typeId} w={item.w} h={item.h} stroke="#0f172a" strokeWidth={furnSwCm} />
+                                  </g>
+                                </g>
+                              )
+                            })}
+                          </g>
                           {/* fat transparent hit area */}
                           <path d={pathStr} fill="none" stroke="transparent" strokeWidth={14} strokeLinecap="round"/>
                           {/* visible wall */}
@@ -1661,19 +1760,17 @@ export default function App() {
                           strokeLinejoin="round"
                         />
 
-                        {/* Furniture inside (clipped to shape) */}
+                        {/* Furniture inside (regular items clipped to room shape) */}
                         <g clipPath={`url(#${clipId})`}>
-                          {furniture.map(item => {
+                          {furniture.filter(it => { const b = it.typeId.split('-')[0]; return b !== 'door' && b !== 'window' }).map(item => {
                             const dragging = furnDrag?.itemId === item.id
                             const ix = dragging ? furnDrag!.x : item.x
                             const iy = dragging ? furnDrag!.y : item.y
                             const cxF = ix + item.w / 2, cyF = iy + item.h / 2
-                            const baseT = item.typeId.split('-')[0]
-                            const noBg = baseT === 'door' || baseT === 'window'  // doors/windows: transparent (no white box)
                             const tf = `rotate(${item.rotation}, ${cxF}, ${cyF})${item.flip ? ` matrix(-1,0,0,1,${2 * cxF},0)` : ''}`
                             return (
                               <g key={item.id} transform={tf}>
-                                {!noBg && <rect x={ix} y={iy} width={item.w} height={item.h} rx={1} fill="white" fillOpacity="0.7"/>}
+                                <rect x={ix} y={iy} width={item.w} height={item.h} rx={1} fill="white" fillOpacity="0.7"/>
                                 <g transform={`translate(${ix}, ${iy})`}>
                                   <FurnitureSymbol type={item.typeId} w={item.w} h={item.h} stroke={c.border} strokeWidth={furnSwCm}/>
                                 </g>
@@ -1681,6 +1778,22 @@ export default function App() {
                             )
                           })}
                         </g>
+
+                        {/* Doors & windows: drawn on top of the wall, NOT clipped (so they stay fully visible) */}
+                        {furniture.filter(it => { const b = it.typeId.split('-')[0]; return b === 'door' || b === 'window' }).map(item => {
+                          const dragging = furnDrag?.itemId === item.id
+                          const ix = dragging ? furnDrag!.x : item.x
+                          const iy = dragging ? furnDrag!.y : item.y
+                          const cxF = ix + item.w / 2, cyF = iy + item.h / 2
+                          const tf = `rotate(${item.rotation}, ${cxF}, ${cyF})${item.flip ? ` matrix(-1,0,0,1,${2 * cxF},0)` : ''}`
+                          return (
+                            <g key={item.id} transform={tf}>
+                              <g transform={`translate(${ix}, ${iy})`}>
+                                <FurnitureSymbol type={item.typeId} w={item.w} h={item.h} stroke="#0f172a" strokeWidth={furnSwCm}/>
+                              </g>
+                            </g>
+                          )
+                        })}
 
                       </svg>
 
