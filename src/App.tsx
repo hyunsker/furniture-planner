@@ -1323,6 +1323,14 @@ export default function App() {
                 >
                   ✏️ 이름
                 </button>
+                {room.shape_data?.type !== 'poly' && room.shape_data?.type !== 'polyline' && (
+                  <button
+                    onClick={() => { setEditingRoom(room); setShowRoomForm(true) }}
+                    className="flex items-center gap-1 px-3 py-2 text-[12px] rounded-lg bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors whitespace-nowrap shrink-0"
+                  >
+                    📐 크기
+                  </button>
+                )}
                 <button
                   onClick={() => rotateRoom(room.id)}
                   className="flex items-center gap-1 px-3 py-2 text-[12px] rounded-lg bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors whitespace-nowrap shrink-0"
@@ -2268,7 +2276,11 @@ export default function App() {
           presetHeight={pendingPos?.h}
           initialShapeType={presetShape ?? undefined}
           onSave={(name, w, h, shape) => {
-            addRoom(name, w, h, shape, pendingPos?.x, pendingPos?.y)
+            if (editingRoom) {
+              updateRoom(editingRoom.id, { name, width_cm: w, height_cm: h, shape_data: shape })
+            } else {
+              addRoom(name, w, h, shape, pendingPos?.x, pendingPos?.y)
+            }
             setPendingPos(null)
             setPresetShape(null)
           }}
