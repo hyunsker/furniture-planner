@@ -24,6 +24,7 @@ export type FurnitureItem = {
   w: number
   h: number
   rotation: number
+  flip?: boolean   // mirror horizontally (e.g. door swing direction)
 }
 
 export interface Room {

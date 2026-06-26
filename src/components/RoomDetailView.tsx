@@ -65,6 +65,10 @@ export default function RoomDetailView({ room, items, onItemsChange, onBack }: P
     }))
   }, [items, onItemsChange])
 
+  const flipItem = useCallback((id: string) => {
+    onItemsChange(items.map(it => it.id === id ? { ...it, flip: !it.flip } : it))
+  }, [items, onItemsChange])
+
   const deleteItem = useCallback((id: string) => {
     onItemsChange(items.filter(it => it.id !== id))
     if (selectedId === id) setSelectedId(null)
@@ -287,6 +291,15 @@ export default function RoomDetailView({ room, items, onItemsChange, onBack }: P
                 회전
               </button>
               <button
+                onClick={() => flipItem(selectedItem.id)}
+                className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-[11px] text-gray-600 transition-colors"
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 3v18M7 8l-4 4 4 4M17 8l4 4-4 4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                반전
+              </button>
+              <button
                 onClick={() => deleteItem(selectedItem.id)}
                 className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg border border-red-100 bg-red-50 hover:bg-red-100 text-[11px] text-red-500 transition-colors"
               >
@@ -383,18 +396,22 @@ export default function RoomDetailView({ room, items, onItemsChange, onBack }: P
                   const cx = px + pw / 2
                   const cy = py + ph / 2
                   const isSel = item.id === selectedId
+                  const baseT = item.typeId.split('-')[0]
+                  const noBg = baseT === 'door' || baseT === 'window'  // doors/windows: transparent
 
                   return (
                     <g
                       key={item.id}
-                      transform={`rotate(${item.rotation}, ${cx}, ${cy})`}
+                      transform={`rotate(${item.rotation}, ${cx}, ${cy})${item.flip ? ` matrix(-1,0,0,1,${2 * cx},0)` : ''}`}
                       onPointerDown={e => onItemPointerDown(e, item.id)}
                       style={{ cursor: dragState?.id === item.id ? 'grabbing' : 'grab' }}
                     >
-                      {/* Shadow rect */}
-                      <rect x={px + 2} y={py + 2} width={pw} height={ph} rx={2} fill="#00000010"/>
-                      {/* White fill */}
-                      <rect x={px} y={py} width={pw} height={ph} rx={2} fill="white"/>
+                      {!noBg && <>
+                        {/* Shadow rect */}
+                        <rect x={px + 2} y={py + 2} width={pw} height={ph} rx={2} fill="#00000010"/>
+                        {/* White fill */}
+                        <rect x={px} y={py} width={pw} height={ph} rx={2} fill="white"/>
+                      </>}
                       {/* Symbol */}
                       <g transform={`translate(${px}, ${py})`}>
                         <FurnitureSymbol type={item.typeId} w={pw} h={ph} stroke="#1e293b" strokeWidth={1.5}/>

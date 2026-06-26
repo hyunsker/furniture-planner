@@ -182,11 +182,27 @@ export default function App() {
   >(null)
   const [showAptModal,  setShowAptModal]  = useState(false)
   const [editingRoom,   setEditingRoom]   = useState<Room | null>(null)
+  // Placed furniture selection on the main plan (for rotate / flip / delete)
+  const [selFurn,       setSelFurn]       = useState<{ roomId: string; itemId: string } | null>(null)
   const [detailRoom,    setDetailRoom]    = useState<Room | null>(null)
   // Furniture is stored per-room in Supabase (rooms.furniture) so both partners see it.
   const roomFurniture: Record<string, FurnitureItem[]> = {}
   for (const r of rooms) roomFurniture[r.id] = r.furniture ?? []
   const saveFurniture = (roomId: string, items: FurnitureItem[]) => updateRoom(roomId, { furniture: items })
+
+  // Transform the currently-selected placed furniture item
+  const mutateSelFurn = (fn: (i: FurnitureItem) => FurnitureItem) => {
+    if (!selFurn) return
+    const items = (roomFurniture[selFurn.roomId] ?? []).map(i => i.id === selFurn.itemId ? fn(i) : i)
+    saveFurniture(selFurn.roomId, items)
+  }
+  const rotateSelFurn = () => mutateSelFurn(i => ({ ...i, rotation: ((i.rotation ?? 0) + 90) % 360 }))
+  const flipSelFurn   = () => mutateSelFurn(i => ({ ...i, flip: !i.flip }))
+  const deleteSelFurn = () => {
+    if (!selFurn) return
+    saveFurniture(selFurn.roomId, (roomFurniture[selFurn.roomId] ?? []).filter(i => i.id !== selFurn.itemId))
+    setSelFurn(null)
+  }
 
   // Furniture catalog & placement
   const [sidebarTab,    setSidebarTab]    = useState<'rooms' | 'door' | 'furniture'>('rooms')
@@ -359,6 +375,7 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (placingItem) { setPlacingItem(null); setPlacingCursor(null); return }
+        if (selFurn) { setSelFurn(null); return }
         if (editingWallLen) { setEditingWallLen(null); return }
         if (multiMode || multiSel.length) { setMultiMode(false); setMultiSel([]); return }
         if (wallMode) { setTool('select'); setWallPts([]); setWallCursor(null) }
@@ -387,7 +404,7 @@ export default function App() {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [wallMode, editingWallLen, placingItem, wallPts, rooms.length, addRoom, finishWalls, undo, multiMode, multiSel.length])
+  }, [wallMode, editingWallLen, placingItem, wallPts, rooms.length, addRoom, finishWalls, undo, multiMode, multiSel.length, selFurn])
 
 
   // ── Drag handlers ────────────────────────────────────────────────────────
@@ -1492,7 +1509,7 @@ export default function App() {
                     }
                     return
                   }
-                  if (!drag && !drawState) setSelectedId(null)
+                  if (!drag && !drawState) { setSelectedId(null); setSelFurn(null) }
                 }}
                 onDoubleClick={e => {
                   if (wallMode && wallPts.length >= 2) {
@@ -1643,14 +1660,20 @@ export default function App() {
 
                         {/* Furniture inside (clipped to shape) */}
                         <g clipPath={`url(#${clipId})`}>
-                          {furniture.map(item => (
-                            <g key={item.id} transform={`rotate(${item.rotation}, ${item.x + item.w / 2}, ${item.y + item.h / 2})`}>
-                              <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={1} fill="white" fillOpacity="0.7"/>
-                              <g transform={`translate(${item.x}, ${item.y})`}>
-                                <FurnitureSymbol type={item.typeId} w={item.w} h={item.h} stroke={c.border} strokeWidth={furnSwCm}/>
+                          {furniture.map(item => {
+                            const cxF = item.x + item.w / 2, cyF = item.y + item.h / 2
+                            const baseT = item.typeId.split('-')[0]
+                            const noBg = baseT === 'door' || baseT === 'window'  // doors/windows: transparent (no white box)
+                            const tf = `rotate(${item.rotation}, ${cxF}, ${cyF})${item.flip ? ` matrix(-1,0,0,1,${2 * cxF},0)` : ''}`
+                            return (
+                              <g key={item.id} transform={tf}>
+                                {!noBg && <rect x={item.x} y={item.y} width={item.w} height={item.h} rx={1} fill="white" fillOpacity="0.7"/>}
+                                <g transform={`translate(${item.x}, ${item.y})`}>
+                                  <FurnitureSymbol type={item.typeId} w={item.w} h={item.h} stroke={c.border} strokeWidth={furnSwCm}/>
+                                </g>
                               </g>
-                            </g>
-                          ))}
+                            )
+                          })}
                         </g>
 
                       </svg>
@@ -2105,6 +2128,54 @@ export default function App() {
                           {toMM(placingItem.w)}×{toMM(placingItem.h)}mm
                         </text>
                       </svg>
+                    </div>
+                  )
+                })()}
+
+                {/* Placed-furniture selection overlays (click to select for rotate/flip) */}
+                {!placingItem && !wallMode && rooms.map(room =>
+                  (roomFurniture[room.id] ?? []).map(item => {
+                    const left = (room.x_cm + item.x) * scale
+                    const top  = (room.y_cm + item.y) * scale
+                    const w = item.w * scale, h = item.h * scale
+                    const isSel = selFurn?.itemId === item.id
+                    return (
+                      <div
+                        key={`fo-${item.id}`}
+                        onPointerDown={e => { e.stopPropagation(); setSelFurn({ roomId: room.id, itemId: item.id }); setSelectedId(null); setMultiSel([]) }}
+                        style={{
+                          position: 'absolute', left, top, width: w, height: h,
+                          zIndex: isSel ? 45 : 16, cursor: 'pointer',
+                          border: isSel ? '1.5px dashed #6366f1' : '1px solid transparent',
+                          borderRadius: 2, background: isSel ? 'rgba(99,102,241,0.06)' : 'transparent',
+                        }}
+                      />
+                    )
+                  })
+                )}
+
+                {/* Selected furniture toolbar: rotate / flip / delete */}
+                {selFurn && !drag && (() => {
+                  const room = rooms.find(r => r.id === selFurn.roomId)
+                  const item = (roomFurniture[selFurn.roomId] ?? []).find(i => i.id === selFurn.itemId)
+                  if (!room || !item) return null
+                  const cxPx  = (room.x_cm + item.x + item.w / 2) * scale
+                  const topPx = (room.y_cm + item.y) * scale
+                  const left = Math.max(80, Math.min(cxPx, cW - 80))
+                  const top  = Math.max(4, topPx - 46)
+                  return (
+                    <div
+                      onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}
+                      style={{
+                        position: 'absolute', left, top, transform: 'translateX(-50%)', zIndex: 130,
+                        display: 'flex', gap: 4, alignItems: 'center', background: 'white',
+                        padding: '5px 6px', borderRadius: 10, boxShadow: '0 4px 18px rgba(0,0,0,0.16)', border: '1px solid #e5e7eb',
+                      }}
+                    >
+                      <span className="text-[11px] font-semibold text-gray-600 px-1 whitespace-nowrap">{item.label}</span>
+                      <button onClick={rotateSelFurn} className="px-2.5 py-1.5 text-[12px] rounded-lg bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 whitespace-nowrap">↻ 회전</button>
+                      <button onClick={flipSelFurn} className="px-2.5 py-1.5 text-[12px] rounded-lg bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 whitespace-nowrap">⇄ 반전</button>
+                      <button onClick={deleteSelFurn} className="px-2.5 py-1.5 text-[12px] rounded-lg bg-red-50 border border-red-100 text-red-500 hover:bg-red-100 whitespace-nowrap">🗑 삭제</button>
                     </div>
                   )
                 })()}
