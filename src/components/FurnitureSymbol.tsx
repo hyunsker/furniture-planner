@@ -270,6 +270,43 @@ export default function FurnitureSymbol({ type, w, h, stroke = '#334155', stroke
     )
   }
 
+  /* ── DOOR ─────────────────────────────────────────────────────────────── */
+  if (base === 'door') {
+    if (type === 'door-slide') {
+      // Sliding door – two overlapping panels
+      const panelH = h * 0.5
+      const y = (h - panelH) / 2
+      return (
+        <g>
+          <rect x={0} y={y} width={w * 0.54} height={panelH} fill="none" stroke={stroke} strokeWidth={sw} />
+          <rect x={w * 0.46} y={y} width={w * 0.54} height={panelH} fill="none" stroke={stroke} strokeWidth={sw} />
+        </g>
+      )
+    }
+    // Swing door – hinge bottom-left, leaf up, quarter-circle sweep
+    return (
+      <g>
+        {/* jamb ticks */}
+        <line x1={0} y1={h} x2={0} y2={h - sw * 3} stroke={stroke} strokeWidth={sw * 1.4} strokeLinecap="round" />
+        <line x1={w} y1={h} x2={w} y2={h - sw * 3} stroke={stroke} strokeWidth={sw * 1.4} strokeLinecap="round" />
+        {/* door leaf (open) */}
+        <line x1={0} y1={h} x2={0} y2={0} stroke={stroke} strokeWidth={sw * 1.3} strokeLinecap="round" />
+        {/* swing arc */}
+        <path d={`M 0 0 A ${w} ${h} 0 0 1 ${w} ${h}`} fill="none" stroke={stroke} strokeWidth={sw * 0.8} strokeDasharray="5,3" />
+      </g>
+    )
+  }
+
+  /* ── WINDOW ───────────────────────────────────────────────────────────── */
+  if (base === 'window') {
+    return (
+      <g>
+        <rect x={0} y={0} width={w} height={h} fill="none" stroke={stroke} strokeWidth={sw} />
+        <line x1={0} y1={h / 2} x2={w} y2={h / 2} stroke={stroke} strokeWidth={sw * 0.8} />
+      </g>
+    )
+  }
+
   /* ── DEFAULT ──────────────────────────────────────────────────────────── */
   return (
     <g>

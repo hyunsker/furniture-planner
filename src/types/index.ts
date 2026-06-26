@@ -26,17 +26,6 @@ export type FurnitureItem = {
   rotation: number
 }
 
-export type DoorType = 'swing' | 'sliding' | 'folding'
-export type DoorWall = 'top' | 'right' | 'bottom' | 'left'
-export type DoorItem = {
-  id: string
-  wall: DoorWall
-  position: number   // 0–1 along the wall
-  widthCm: number
-  type: DoorType
-  flip: boolean      // flip hinge side
-}
-
 export interface Room {
   id: string
   project_id: string
@@ -49,7 +38,6 @@ export interface Room {
   order_index: number
   shape_data: ShapeData
   furniture?: FurnitureItem[]
-  doors?: DoorItem[]
 }
 
 /** Returns SVG polygon points string for a room shape (in given w×h coordinate space) */

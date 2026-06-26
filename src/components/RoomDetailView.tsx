@@ -3,7 +3,6 @@ import type { Room, FurnitureItem } from '../types'
 import { getRoomPoints } from '../types'
 import FurnitureSymbol from './FurnitureSymbol'
 import AddFurnitureModal from './AddFurnitureModal'
-import DoorSymbol, { type DoorItem, type DoorType, type DoorWall } from './DoorSymbol'
 import { FURNITURE_LIBRARY, FURNITURE_CATEGORIES, type FurnitureVariant, type FurnitureType } from '../lib/furniture-library'
 
 export type { FurnitureItem }
@@ -12,8 +11,6 @@ interface Props {
   room: Room
   items: FurnitureItem[]
   onItemsChange: (items: FurnitureItem[]) => void
-  doors: DoorItem[]
-  onDoorsChange: (doors: DoorItem[]) => void
   onBack: () => void
 }
 
@@ -26,17 +23,12 @@ function snapTo(val: number, grid: number) {
 
 type AddPending = { ft: FurnitureType; variant: FurnitureVariant }
 
-export default function RoomDetailView({ room, items, onItemsChange, doors, onDoorsChange, onBack }: Props) {
+export default function RoomDetailView({ room, items, onItemsChange, onBack }: Props) {
   const [selectedId, setSelectedId]         = useState<string | null>(null)
   const [activeCategory, setActiveCategory] = useState(FURNITURE_CATEGORIES[0])
   const [expandedItem, setExpandedItem]     = useState<string | null>(null)
   const [addPending, setAddPending]         = useState<AddPending | null>(null)
   const [searchQuery, setSearchQuery]       = useState('')
-  const [activeTab, setActiveTab]           = useState<'furniture' | 'door'>('furniture')
-  const [showDoorForm, setShowDoorForm]     = useState(false)
-  const [doorForm, setDoorForm] = useState<{
-    wall: DoorWall; position: number; widthCm: number; type: DoorType; flip: boolean
-  }>({ wall: 'bottom', position: 0.3, widthCm: 90, type: 'swing', flip: false })
   const [dragState, setDragState] = useState<{
     id: string; startX: number; startY: number; origX: number; origY: number
   } | null>(null)
@@ -102,15 +94,6 @@ export default function RoomDetailView({ room, items, onItemsChange, doors, onDo
 
   const onCanvasPointerUp = useCallback(() => setDragState(null), [])
 
-  const addDoor = useCallback(() => {
-    const door: DoorItem = {
-      id: `door-${Date.now()}`,
-      ...doorForm,
-    }
-    onDoorsChange([...doors, door])
-    setShowDoorForm(false)
-  }, [doorForm, doors, onDoorsChange])
-
   const selectedItem = items.find(it => it.id === selectedId)
 
   // Search logic
@@ -155,134 +138,7 @@ export default function RoomDetailView({ room, items, onItemsChange, doors, onDo
           </div>
         </div>
 
-        {/* Main tabs */}
-        <div className="flex border-b border-gray-100 shrink-0">
-          {[
-            { id: 'furniture' as const, label: '가구' },
-            { id: 'door'      as const, label: '문·창문' },
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 py-2.5 text-xs font-semibold transition-colors ${
-                activeTab === tab.id
-                  ? 'text-indigo-600 border-b-2 border-indigo-500'
-                  : 'text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {activeTab === 'door' ? (
-          /* ── Door tab ── */
-          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-            {doors.length === 0 && (
-              <p className="text-xs text-gray-400 leading-relaxed">
-                아직 문이 없습니다. 아래 버튼으로 추가하세요.
-              </p>
-            )}
-            {doors.map(door => (
-              <div key={door.id} className="flex items-center justify-between px-3 py-2 rounded-xl border border-gray-100 bg-gray-50">
-                <div>
-                  <p className="text-xs font-medium text-gray-700">
-                    {door.type === 'swing' ? '여닫이' : door.type === 'sliding' ? '미닫이' : '폴딩'} {door.widthCm}cm
-                  </p>
-                  <p className="text-[10px] text-gray-400">
-                    {door.wall === 'top' ? '위' : door.wall === 'bottom' ? '아래' : door.wall === 'left' ? '왼쪽' : '오른쪽'} 벽 · {Math.round(door.position * 100)}% 위치
-                  </p>
-                </div>
-                <button
-                  onClick={() => onDoorsChange(doors.filter(x => x.id !== door.id))}
-                  className="text-gray-300 hover:text-red-400 transition-colors text-xs"
-                >✕</button>
-              </div>
-            ))}
-
-            {!showDoorForm ? (
-              <button
-                onClick={() => setShowDoorForm(true)}
-                className="w-full py-2.5 rounded-xl border-2 border-dashed border-gray-200 text-xs text-gray-400 hover:border-indigo-300 hover:text-indigo-500 transition-colors"
-              >
-                + 문 추가
-              </button>
-            ) : (
-              <div className="bg-gray-50 rounded-2xl p-3 space-y-3">
-                <p className="text-xs font-semibold text-gray-700">문 추가</p>
-                <div>
-                  <label className="text-[10px] text-gray-500 mb-1 block">종류</label>
-                  <div className="grid grid-cols-3 gap-1">
-                    {[
-                      { t: 'swing' as DoorType, label: '여닫이' },
-                      { t: 'sliding' as DoorType, label: '미닫이' },
-                      { t: 'folding' as DoorType, label: '폴딩' },
-                    ].map(({ t, label }) => (
-                      <button
-                        key={t}
-                        onClick={() => setDoorForm(f => ({ ...f, type: t }))}
-                        className={`py-1.5 rounded-lg text-[11px] font-medium border transition-colors ${
-                          doorForm.type === t ? 'bg-indigo-50 border-indigo-300 text-indigo-600' : 'border-gray-200 text-gray-500'
-                        }`}
-                      >{label}</button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="text-[10px] text-gray-500 mb-1 block">벽 위치</label>
-                  <div className="grid grid-cols-2 gap-1">
-                    {[
-                      { w: 'top' as DoorWall, label: '위쪽 벽' },
-                      { w: 'right' as DoorWall, label: '오른쪽 벽' },
-                      { w: 'bottom' as DoorWall, label: '아래쪽 벽' },
-                      { w: 'left' as DoorWall, label: '왼쪽 벽' },
-                    ].map(({ w, label }) => (
-                      <button
-                        key={w}
-                        onClick={() => setDoorForm(f => ({ ...f, wall: w }))}
-                        className={`py-1.5 rounded-lg text-[11px] font-medium border transition-colors ${
-                          doorForm.wall === w ? 'bg-indigo-50 border-indigo-300 text-indigo-600' : 'border-gray-200 text-gray-500'
-                        }`}
-                      >{label}</button>
-                    ))}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] text-gray-500 mb-1 block">너비 (cm)</label>
-                    <input
-                      type="number" value={doorForm.widthCm}
-                      onChange={e => setDoorForm(f => ({ ...f, widthCm: Number(e.target.value) }))}
-                      min={60} max={240} step={5}
-                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-gray-500 mb-1 block">위치 (%)</label>
-                    <input
-                      type="number" value={Math.round(doorForm.position * 100)}
-                      onChange={e => setDoorForm(f => ({ ...f, position: Number(e.target.value) / 100 }))}
-                      min={5} max={90} step={5}
-                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input type="checkbox" id="flip-door" checked={doorForm.flip}
-                    onChange={e => setDoorForm(f => ({ ...f, flip: e.target.checked }))}
-                    className="accent-indigo-500" />
-                  <label htmlFor="flip-door" className="text-[11px] text-gray-600">경첩 방향 반전</label>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => setShowDoorForm(false)} className="flex-1 py-2 rounded-xl border border-gray-200 text-xs text-gray-500">취소</button>
-                  <button onClick={addDoor} className="flex-1 py-2 rounded-xl bg-indigo-500 text-white text-xs font-medium">추가</button>
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          /* ── Furniture tab ── */
-          <>
+        <>
         {/* Search bar */}
         <div className="px-3 pt-3 pb-2 shrink-0">
           <div className="relative">
@@ -408,7 +264,6 @@ export default function RoomDetailView({ room, items, onItemsChange, doors, onDo
           </>
         )}
           </>
-        )}
 
         {/* Selected item controls */}
         {selectedItem && (
@@ -516,17 +371,6 @@ export default function RoomDetailView({ room, items, onItemsChange, doors, onDo
                   points={getRoomPoints(canvasW, canvasH, room.shape_data ?? { type: 'rect' })}
                   fill="none" stroke="#334155" strokeWidth={2.5} strokeLinejoin="round"
                 />
-
-                {/* Door symbols */}
-                {doors.map(door => (
-                  <DoorSymbol
-                    key={door.id}
-                    door={{ ...door, widthCm: door.widthCm * SCALE }}
-                    roomW={canvasW}
-                    roomH={canvasH}
-                    stroke="#334155"
-                  />
-                ))}
 
                 {/* Furniture items (clipped to room shape) */}
                 <g clipPath="url(#rd-room-clip)">

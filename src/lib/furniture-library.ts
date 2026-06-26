@@ -154,6 +154,26 @@ export const FURNITURE_LIBRARY: FurnitureType[] = [
       { id: 'chair', label: '일반형', w: 50, h: 55 },
     ],
   },
+  {
+    category: '문·창문',
+    name: '문',
+    icon: '🚪',
+    variants: [
+      { id: 'door', label: '여닫이 (80)', w: 80, h: 80 },
+      { id: 'door', label: '여닫이 (90)', w: 90, h: 90 },
+      { id: 'door-slide', label: '미닫이 (160)', w: 160, h: 20 },
+    ],
+  },
+  {
+    category: '문·창문',
+    name: '창문',
+    icon: '🪟',
+    variants: [
+      { id: 'window', label: '소형 (90)',  w: 90,  h: 18 },
+      { id: 'window', label: '중형 (120)', w: 120, h: 18 },
+      { id: 'window', label: '대형 (180)', w: 180, h: 18 },
+    ],
+  },
 ]
 
-export const FURNITURE_CATEGORIES = ['거실', '침실', '주방', '서재', '욕실', '기타']
+export const FURNITURE_CATEGORIES = ['거실', '침실', '주방', '서재', '욕실', '기타', '문·창문']
