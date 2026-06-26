@@ -28,9 +28,9 @@ export const FURNITURE_LIBRARY: FurnitureType[] = [
     name: 'TV 스탠드',
     icon: '▬',
     variants: [
-      { id: 'tv', label: '110cm', w: 110, h: 40 },
-      { id: 'tv', label: '150cm', w: 150, h: 45 },
-      { id: 'tv', label: '200cm', w: 200, h: 45 },
+      { id: 'tv', label: '1100mm', w: 110, h: 40 },
+      { id: 'tv', label: '1500mm', w: 150, h: 45 },
+      { id: 'tv', label: '2000mm', w: 200, h: 45 },
     ],
   },
   {
@@ -107,9 +107,9 @@ export const FURNITURE_LIBRARY: FurnitureType[] = [
     name: '책장',
     icon: '▮',
     variants: [
-      { id: 'bookshelf', label: '60cm', w: 60,  h: 30 },
-      { id: 'bookshelf', label: '90cm', w: 90,  h: 30 },
-      { id: 'bookshelf', label: '120cm', w: 120, h: 30 },
+      { id: 'bookshelf', label: '600mm', w: 60,  h: 30 },
+      { id: 'bookshelf', label: '900mm', w: 90,  h: 30 },
+      { id: 'bookshelf', label: '1200mm', w: 120, h: 30 },
     ],
   },
   {

@@ -46,7 +46,7 @@ function stepFor(unit: 'cm' | 'mm') { return unit === 'mm' ? 5 : 0.5 }
 
 export default function RoomFormModal({ room, presetWidth, presetHeight, initialShapeType, onSave, onClose }: Props) {
   const initShape = room?.shape_data ?? { type: 'rect' as const }
-  const [unit, setUnit] = useState<'cm' | 'mm'>('cm')
+  const [unit, setUnit] = useState<'cm' | 'mm'>('mm')
 
   const initW = room?.width_cm ?? presetWidth ?? 0
   const initH = room?.height_cm ?? presetHeight ?? 0

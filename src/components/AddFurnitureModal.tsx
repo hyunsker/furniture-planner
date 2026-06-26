@@ -50,40 +50,40 @@ export default function AddFurnitureModal({ typeName, typeId, defaultW, defaultH
           <div>
             <label className="flex items-center justify-between mb-1.5">
               <span className="text-xs font-medium text-gray-600">너비 (가로)</span>
-              <span className="text-xs font-semibold text-indigo-600">{w} cm</span>
+              <span className="text-xs font-semibold text-indigo-600">{Math.round(w * 10)} mm</span>
             </label>
             <input
               type="range"
-              min={30}
-              max={500}
+              min={300}
+              max={5000}
               step={5}
-              value={w}
-              onChange={e => setW(Number(e.target.value))}
+              value={Math.round(w * 10)}
+              onChange={e => setW(Number(e.target.value) / 10)}
               className="w-full h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer accent-indigo-500"
             />
             <div className="flex justify-between mt-1">
-              <span className="text-[10px] text-gray-300">30</span>
-              <span className="text-[10px] text-gray-300">500cm</span>
+              <span className="text-[10px] text-gray-300">300</span>
+              <span className="text-[10px] text-gray-300">5000mm</span>
             </div>
           </div>
 
           <div>
             <label className="flex items-center justify-between mb-1.5">
               <span className="text-xs font-medium text-gray-600">깊이 (세로)</span>
-              <span className="text-xs font-semibold text-indigo-600">{h} cm</span>
+              <span className="text-xs font-semibold text-indigo-600">{Math.round(h * 10)} mm</span>
             </label>
             <input
               type="range"
-              min={30}
-              max={500}
+              min={300}
+              max={5000}
               step={5}
-              value={h}
-              onChange={e => setH(Number(e.target.value))}
+              value={Math.round(h * 10)}
+              onChange={e => setH(Number(e.target.value) / 10)}
               className="w-full h-1.5 bg-gray-200 rounded-full appearance-none cursor-pointer accent-indigo-500"
             />
             <div className="flex justify-between mt-1">
-              <span className="text-[10px] text-gray-300">30</span>
-              <span className="text-[10px] text-gray-300">500cm</span>
+              <span className="text-[10px] text-gray-300">300</span>
+              <span className="text-[10px] text-gray-300">5000mm</span>
             </div>
           </div>
 
@@ -94,13 +94,14 @@ export default function AddFurnitureModal({ typeName, typeId, defaultW, defaultH
               <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
                 <input
                   type="number"
-                  min={10}
-                  max={1000}
-                  value={w}
-                  onChange={e => setW(Number(e.target.value))}
+                  min={100}
+                  max={10000}
+                  step={5}
+                  value={Math.round(w * 10)}
+                  onChange={e => setW(Number(e.target.value) / 10)}
                   className="flex-1 text-sm text-center py-1.5 outline-none w-0"
                 />
-                <span className="px-2 text-xs text-gray-400 bg-gray-50 border-l border-gray-200 py-1.5">cm</span>
+                <span className="px-2 text-xs text-gray-400 bg-gray-50 border-l border-gray-200 py-1.5">mm</span>
               </div>
             </div>
             <div className="flex items-end pb-1 text-gray-300 text-sm">×</div>
@@ -109,13 +110,14 @@ export default function AddFurnitureModal({ typeName, typeId, defaultW, defaultH
               <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden">
                 <input
                   type="number"
-                  min={10}
-                  max={1000}
-                  value={h}
-                  onChange={e => setH(Number(e.target.value))}
+                  min={100}
+                  max={10000}
+                  step={5}
+                  value={Math.round(h * 10)}
+                  onChange={e => setH(Number(e.target.value) / 10)}
                   className="flex-1 text-sm text-center py-1.5 outline-none w-0"
                 />
-                <span className="px-2 text-xs text-gray-400 bg-gray-50 border-l border-gray-200 py-1.5">cm</span>
+                <span className="px-2 text-xs text-gray-400 bg-gray-50 border-l border-gray-200 py-1.5">mm</span>
               </div>
             </div>
           </div>

@@ -40,6 +40,12 @@ function getShareCode() {
 const snap  = (v: number, g: number) => Math.round(v / g) * g
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
+// Units: data is stored in cm internally, but the UI shows/edits everything in mm.
+const GRID = 0.5                                   // drawing/drag snap grid in cm (= 5mm)
+const r1   = (v: number) => Math.round(v * 10) / 10 // round to 0.1cm (1mm) precision
+const toMM = (cm: number) => Math.round(cm * 10)    // cm → mm for display
+const cmFromMM = (mm: number) => Math.round(mm) / 10 // mm input → cm (1mm precision)
+
 /**
  * Force every wall segment to be perfectly horizontal or vertical.
  * Walks the path from the first point; each edge keeps its dominant axis and
@@ -242,7 +248,7 @@ export default function App() {
     if (isClosed && closing) shapePts = deduped.slice(0, -1)
 
     // Snap every wall to be perfectly horizontal/vertical
-    shapePts = orthogonalize(shapePts).map(p => ({ x: snap(p.x, 5), y: snap(p.y, 5) }))
+    shapePts = orthogonalize(shapePts).map(p => ({ x: snap(p.x, GRID), y: snap(p.y, GRID) }))
 
     const xs = shapePts.map(p => p.x), ys = shapePts.map(p => p.y)
     const minX = Math.min(...xs), maxX = Math.max(...xs)
@@ -263,9 +269,9 @@ export default function App() {
     // Ask the user to choose/confirm the name before creating the room
     setNamePrompt({
       kind: 'wall',
-      w: snap(w, 5), h: snap(h, 5),
+      w: snap(w, GRID), h: snap(h, GRID),
       shape: shapeData,
-      x: snap(minX, 5), y: snap(minY, 5),
+      x: snap(minX, GRID), y: snap(minY, GRID),
       initial: suggested,
     })
     setWallPts([])
@@ -282,12 +288,12 @@ export default function App() {
     const xs = newPts.map(p => p.x), ys = newPts.map(p => p.y)
     const minX = Math.min(...xs), minY = Math.min(...ys)
     const maxX = Math.max(...xs), maxY = Math.max(...ys)
-    const norm = newPts.map(p => ({ x: Math.round(p.x - minX), y: Math.round(p.y - minY) }))
+    const norm = newPts.map(p => ({ x: r1(p.x - minX), y: r1(p.y - minY) }))
     updateRoom(room.id, {
-      x_cm: snap(room.x_cm + minX, 5),
-      y_cm: snap(room.y_cm + minY, 5),
-      width_cm: Math.max(snap(maxX - minX, 5), 5),
-      height_cm: Math.max(snap(maxY - minY, 5), 5),
+      x_cm: r1(room.x_cm + minX),
+      y_cm: r1(room.y_cm + minY),
+      width_cm: Math.max(r1(maxX - minX), 1),
+      height_cm: Math.max(r1(maxY - minY), 1),
       shape_data: { type, points: norm },
     })
   }
@@ -454,7 +460,7 @@ export default function App() {
         if (Math.abs(ly - nb.y) < bestDY) { bestDY = Math.abs(ly - nb.y); ly = nb.y }
       }
 
-      const moved = { x: snap(lx, 5), y: snap(ly, 5) }
+      const moved = { x: snap(lx, GRID), y: snap(ly, GRID) }
       const newPts = pts.map((p, i) => (i === idx ? moved : { ...p }))
       setDragPolyPts(newPts)
       return
@@ -505,8 +511,8 @@ export default function App() {
         const x = Math.min(drawState.sx, drawState.ex)
         const y = Math.min(drawState.sy, drawState.ey)
         setPendingPos({
-          x: snap(x, 5), y: snap(y, 5),
-          w: snap(w, 5), h: snap(h, 5),
+          x: snap(x, GRID), y: snap(y, GRID),
+          w: snap(w, GRID), h: snap(h, GRID),
         })
         setShowRoomForm(true)
       }
@@ -881,7 +887,7 @@ export default function App() {
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-[13px] font-semibold text-gray-900 truncate">{project?.name ?? '평면도'}</p>
-              <p className="text-[10px] text-gray-400">{apt.w} × {apt.h} cm</p>
+              <p className="text-[10px] text-gray-400">{toMM(apt.w)} × {toMM(apt.h)} mm</p>
             </div>
             {isMobile && (
               <button
@@ -971,7 +977,7 @@ export default function App() {
                 <div className="flex-1 min-w-0">
                   <p className="text-[13px] font-medium text-gray-800 truncate">{room.name}</p>
                   <p className="text-[10px] text-gray-400">
-                    {room.width_cm}×{room.height_cm}cm
+                    {toMM(room.width_cm)}×{toMM(room.height_cm)}mm
                     {fCount > 0 && <span className="ml-1.5 text-indigo-400">가구 {fCount}개</span>}
                   </p>
                 </div>
@@ -1014,7 +1020,7 @@ export default function App() {
             {placingItem && (
               <div className="mx-2 mb-1 px-3 py-2 rounded-xl bg-indigo-500 text-white">
                 <p className="text-[11px] font-semibold">📍 배치 중: {placingItem.name}</p>
-                <p className="text-[10px] opacity-80">{placingItem.w}×{placingItem.h}cm · 방 위를 클릭하세요 · Esc 취소</p>
+                <p className="text-[10px] opacity-80">{toMM(placingItem.w)}×{toMM(placingItem.h)}mm · 방 위를 클릭하세요 · Esc 취소</p>
               </div>
             )}
             {/* Category pills */}
@@ -1062,7 +1068,7 @@ export default function App() {
                             })()}
                           </svg>
                           <span className="text-[10px] text-gray-600 font-medium leading-tight text-center">{variant.label}</span>
-                          <span className="text-[9px] text-gray-400">{variant.w}×{variant.h}cm</span>
+                          <span className="text-[9px] text-gray-400">{toMM(variant.w)}×{toMM(variant.h)}mm</span>
                         </button>
                       )
                     })}
@@ -1156,7 +1162,7 @@ export default function App() {
               <span className="text-[13px] font-semibold text-gray-600 shrink-0">전체 도면</span>
               {!isMobile && (
                 <span className="text-[11px] text-gray-400">
-                  {(apt.w / 100).toFixed(1)}m × {(apt.h / 100).toFixed(1)}m
+                  {toMM(apt.w)} × {toMM(apt.h)} mm
                 </span>
               )}
             </div>
@@ -1374,8 +1380,8 @@ export default function App() {
                         id: `f-${Date.now()}`,
                         typeId: placingItem.typeId,
                         label: placingItem.name,
-                        x: snap(clamp(lx - fw / 2, 0, room.width_cm - fw), 5),
-                        y: snap(clamp(ly - fh / 2, 0, room.height_cm - fh), 5),
+                        x: snap(clamp(lx - fw / 2, 0, room.width_cm - fw), GRID),
+                        y: snap(clamp(ly - fh / 2, 0, room.height_cm - fh), GRID),
                         w: fw, h: fh, rotation: 0,
                       }
                       saveFurniture(room.id, [...(roomFurniture[room.id] ?? []), newItem])
@@ -1394,11 +1400,11 @@ export default function App() {
                     }
                     if (wallPts.length === 0) {
                       // First point
-                      setWallPts([{ x: snap(cx, 5), y: snap(cy, 5) }])
+                      setWallPts([{ x: snap(cx, GRID), y: snap(cy, GRID) }])
                     } else {
                       // Use H/V-snapped cursor position directly (no modal)
-                      const pt = wallCursor ?? { x: snap(cx, 5), y: snap(cy, 5) }
-                      setWallPts(prev => [...prev, { x: snap(pt.x, 5), y: snap(pt.y, 5) }])
+                      const pt = wallCursor ?? { x: snap(cx, GRID), y: snap(cy, GRID) }
+                      setWallPts(prev => [...prev, { x: snap(pt.x, GRID), y: snap(pt.y, GRID) }])
                     }
                     return
                   }
@@ -1586,7 +1592,7 @@ export default function App() {
                         }}>
                           {room.name}
                           <span style={{ opacity: 0.6, fontWeight: 400, marginLeft: 5 }}>
-                            {room.width_cm}×{room.height_cm}
+                            {toMM(room.width_cm)}×{toMM(room.height_cm)}mm
                           </span>
                         </div>
                       )}
@@ -1607,12 +1613,12 @@ export default function App() {
                         fill="rgba(99,102,241,0.07)" stroke="#6366f1" strokeWidth={1.8} strokeDasharray="7,4" rx={4}/>
                       {w > 40 && (
                         <text x={x + w / 2} y={y - 7} textAnchor="middle" fontSize={11} fill="#6366f1" fontWeight="700">
-                          {wCm.toFixed(1)}cm
+                          {toMM(wCm)}mm
                         </text>
                       )}
                       {h > 40 && (
                         <text x={x + w + 6} y={y + h / 2 + 4} textAnchor="start" fontSize={11} fill="#6366f1" fontWeight="700">
-                          {hCm.toFixed(1)}cm
+                          {toMM(hCm)}mm
                         </text>
                       )}
                     </svg>
@@ -1646,7 +1652,7 @@ export default function App() {
                     {wallPts.map((pt, i) => {
                       if (i === 0) return null
                       const prev = wallPts[i - 1]
-                      const len = Math.round(Math.hypot(pt.x - prev.x, pt.y - prev.y))
+                      const len = toMM(Math.hypot(pt.x - prev.x, pt.y - prev.y))
                       const mx = ((prev.x + pt.x) / 2) * scale
                       const my = ((prev.y + pt.y) / 2) * scale
                       const isH = Math.abs(pt.x - prev.x) >= Math.abs(pt.y - prev.y)
@@ -1658,7 +1664,7 @@ export default function App() {
                             stroke="#6366f1" strokeWidth={2.5} strokeLinecap="round"
                           />
                           <rect x={mx - 20} y={my - (isH ? 16 : 0) - 8} width={40} height={14} rx={4} fill="#6366f1" fillOpacity={0.9}/>
-                          <text x={mx} y={my - (isH ? 16 : 0) + 1.5} textAnchor="middle" fontSize={9} fill="white" fontWeight="700">{len}cm</text>
+                          <text x={mx} y={my - (isH ? 16 : 0) + 1.5} textAnchor="middle" fontSize={9} fill="white" fontWeight="700">{len}mm</text>
                         </g>
                       )
                     })}
@@ -1685,12 +1691,12 @@ export default function App() {
                     {/* Dimension label on preview wall */}
                     {wallPts.length > 0 && wallCursor && (() => {
                       const from = wallPts[wallPts.length - 1]
-                      const len = Math.abs(wallCursor.axis === 'h'
+                      const len = toMM(Math.abs(wallCursor.axis === 'h'
                         ? wallCursor.x - from.x
-                        : wallCursor.y - from.y).toFixed(0)
+                        : wallCursor.y - from.y))
                       const mx = ((from.x + wallCursor.x) / 2) * scale
                       const my = ((from.y + wallCursor.y) / 2) * scale
-                      return <text x={mx} y={my - 6} textAnchor="middle" fontSize={10} fill="#6366f1" fontWeight="700">{len}cm</text>
+                      return <text x={mx} y={my - 6} textAnchor="middle" fontSize={10} fill="#6366f1" fontWeight="700">{len}mm</text>
                     })()}
                     {/* Vertex dots */}
                     {wallPts.map((pt, i) => (
@@ -1779,7 +1785,7 @@ export default function App() {
                           const next = pts[(i + 1) % pts.length]
                           const isHov = hoveredEdgeIdx === i
                           const isEditingThis = editingWallLen?.roomId === room.id && editingWallLen?.edgeIdx === i
-                          const segLen = Math.round(Math.hypot(next.x - pt.x, next.y - pt.y))
+                          const segLen = toMM(Math.hypot(next.x - pt.x, next.y - pt.y))
                           const mx = rx + (pt.x + next.x) / 2 * scale
                           const my = ry + (pt.y + next.y) / 2 * scale
                           const isH = Math.abs(next.x - pt.x) >= Math.abs(next.y - pt.y)
@@ -1795,8 +1801,8 @@ export default function App() {
                               {!isEditingThis && (
                                 <>
                                   <rect
-                                    x={mx - 20} y={my - (isH ? 22 : 4) - 9}
-                                    width={40} height={16} rx={5}
+                                    x={mx - 26} y={my - (isH ? 22 : 4) - 9}
+                                    width={52} height={16} rx={5}
                                     fill={isHov ? '#6366f1' : 'white'}
                                     stroke={isHov ? '#6366f1' : '#c7d2fe'}
                                     strokeWidth={1}
@@ -1807,7 +1813,7 @@ export default function App() {
                                     textAnchor="middle" fontSize={9}
                                     fill={isHov ? 'white' : '#4f46e5'}
                                     fontWeight="600"
-                                  >{segLen}cm</text>
+                                  >{segLen}</text>
                                 </>
                               )}
                             </g>
@@ -1821,7 +1827,7 @@ export default function App() {
                         const next = pts[(i + 1) % pts.length]
                         const mx = rx + (pt.x + next.x) / 2 * scale
                         const my = ry + (pt.y + next.y) / 2 * scale
-                        const segLen = Math.round(Math.hypot(next.x - pt.x, next.y - pt.y))
+                        const segLen = toMM(Math.hypot(next.x - pt.x, next.y - pt.y))  // mm
                         const isH = Math.abs(next.x - pt.x) >= Math.abs(next.y - pt.y)
                         const labelY = my - (isH ? 22 : 4) - 9
                         const isEditingThis = editingWallLen?.roomId === room.id && editingWallLen?.edgeIdx === i
@@ -1875,12 +1881,12 @@ export default function App() {
                                       autoFocus
                                       type="number"
                                       defaultValue={segLen}
-                                      min={10}
+                                      min={50}
                                       step={5}
                                       onKeyDown={e => {
                                         e.stopPropagation()
                                         if (e.key === 'Enter') {
-                                          const newLen = Math.max(10, parseFloat((e.target as HTMLInputElement).value) || segLen)
+                                          const newLen = Math.max(5, cmFromMM(parseFloat((e.target as HTMLInputElement).value) || segLen))
                                           const newPts = applyEdgeLength(pts, i, newLen, isOpen)
                                           commitPolyShape(room, newPts, shapeType)
                                           setEditingWallLen(null)
@@ -1888,19 +1894,19 @@ export default function App() {
                                         if (e.key === 'Escape') setEditingWallLen(null)
                                       }}
                                       style={{
-                                        width: 64, border: '1px solid #e0e7ff', borderRadius: 6,
+                                        width: 70, border: '1px solid #e0e7ff', borderRadius: 6,
                                         padding: '3px 6px', fontSize: 13, fontWeight: 600, color: '#1e1b4b',
                                         outline: 'none', textAlign: 'right',
                                       }}
                                     />
-                                    <span style={{ fontSize: 11, color: '#6366f1', fontWeight: 600 }}>cm</span>
+                                    <span style={{ fontSize: 11, color: '#6366f1', fontWeight: 600 }}>mm</span>
                                   </div>
                                   <div style={{ display: 'flex', gap: 4 }}>
                                     <button
                                       onClick={e => {
                                         e.stopPropagation()
                                         const input = e.currentTarget.closest('div')?.previousElementSibling?.querySelector('input') as HTMLInputElement
-                                        const newLen = Math.max(10, parseFloat(input?.value) || segLen)
+                                        const newLen = Math.max(5, cmFromMM(parseFloat(input?.value) || segLen))
                                         const newPts = applyEdgeLength(pts, i, newLen, isOpen)
                                         commitPolyShape(room, newPts, shapeType)
                                         setEditingWallLen(null)
@@ -2012,7 +2018,7 @@ export default function App() {
                           stroke={room ? '#6366f1' : '#ef4444'} strokeWidth={1.2}
                         />
                         <text x={fw / 2} y={fh + 14} textAnchor="middle" fontSize={10} fill={room ? '#6366f1' : '#ef4444'} fontWeight="500">
-                          {placingItem.w}×{placingItem.h}cm
+                          {toMM(placingItem.w)}×{toMM(placingItem.h)}mm
                         </text>
                       </svg>
                     </div>

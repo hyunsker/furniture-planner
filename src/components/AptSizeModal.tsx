@@ -9,14 +9,15 @@ interface Props {
 }
 
 export default function AptSizeModal({ aptW, aptH, onSave, onClose }: Props) {
-  const [w, setW] = useState(aptW.toString())
-  const [h, setH] = useState(aptH.toString())
+  // UI is in mm; data stays in cm
+  const [w, setW] = useState(Math.round(aptW * 10).toString())
+  const [h, setH] = useState(Math.round(aptH * 10).toString())
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const pw = parseFloat(w), ph = parseFloat(h)
-    if (isNaN(pw) || isNaN(ph) || pw < 100 || ph < 100) return
-    onSave(pw, ph)
+    if (isNaN(pw) || isNaN(ph) || pw < 1000 || ph < 1000) return
+    onSave(Math.round(pw) / 10, Math.round(ph) / 10)
     onClose()
   }
 
@@ -31,19 +32,19 @@ export default function AptSizeModal({ aptW, aptH, onSave, onClose }: Props) {
           <p className="text-xs text-gray-500">아파트 전체 가로·세로 치수를 입력하세요</p>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">전체 가로 (cm)</label>
-              <input type="number" value={w} onChange={e => setW(e.target.value)} min="100"
+              <label className="block text-xs font-medium text-gray-600 mb-1">전체 가로 (mm)</label>
+              <input type="number" value={w} onChange={e => setW(e.target.value)} min="1000" step="5"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">전체 세로 (cm)</label>
-              <input type="number" value={h} onChange={e => setH(e.target.value)} min="100"
+              <label className="block text-xs font-medium text-gray-600 mb-1">전체 세로 (mm)</label>
+              <input type="number" value={h} onChange={e => setH(e.target.value)} min="1000" step="5"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
             </div>
           </div>
           {w && h && !isNaN(+w) && !isNaN(+h) && (
             <p className="text-xs text-gray-400">
-              {w}cm × {h}cm = {(+w / 100).toFixed(1)}m × {(+h / 100).toFixed(1)}m
+              {w}mm × {h}mm = {(+w / 1000).toFixed(2)}m × {(+h / 1000).toFixed(2)}m
             </p>
           )}
           <button type="submit"

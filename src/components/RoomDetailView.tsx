@@ -15,7 +15,8 @@ interface Props {
 }
 
 const SCALE = 2.8
-const SNAP_CM = 5
+const SNAP_CM = 0.5
+const toMM = (cm: number) => Math.round(cm * 10)
 
 function snapTo(val: number, grid: number) {
   return Math.round(val / grid) * grid
@@ -133,7 +134,7 @@ export default function RoomDetailView({ room, items, onItemsChange, onBack }: P
             </div>
             <div>
               <p className="text-sm font-semibold text-gray-900 leading-tight">{room.name}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{rw} × {rh} cm &nbsp;·&nbsp; {(rw * rh / 10000).toFixed(1)} m²</p>
+              <p className="text-xs text-gray-400 mt-0.5">{toMM(rw)} × {toMM(rh)} mm &nbsp;·&nbsp; {(rw * rh / 10000).toFixed(1)} m²</p>
             </div>
           </div>
         </div>
@@ -180,7 +181,7 @@ export default function RoomDetailView({ room, items, onItemsChange, onBack }: P
                     >
                       <div>
                         <p className="text-[12px] font-medium text-gray-700 group-hover:text-indigo-700">{v.label}</p>
-                        <p className="text-[10px] text-gray-400">{v.w} × {v.h} cm</p>
+                        <p className="text-[10px] text-gray-400">{toMM(v.w)} × {toMM(v.h)} mm</p>
                       </div>
                       <div className="w-9 h-7 flex items-center justify-center">
                         <svg width={Math.min(36, v.w * 0.18)} height={Math.min(28, v.h * 0.18)} viewBox={`0 0 ${v.w} ${v.h}`} preserveAspectRatio="xMidYMid meet">
@@ -240,7 +241,7 @@ export default function RoomDetailView({ room, items, onItemsChange, onBack }: P
                     >
                       <div>
                         <p className="text-[12px] font-medium text-gray-700 group-hover:text-indigo-700">{v.label}</p>
-                        <p className="text-[10px] text-gray-400">{v.w} × {v.h} cm</p>
+                        <p className="text-[10px] text-gray-400">{toMM(v.w)} × {toMM(v.h)} mm</p>
                       </div>
                       {/* Mini SVG preview */}
                       <div className="w-9 h-7 flex items-center justify-center">
@@ -271,7 +272,7 @@ export default function RoomDetailView({ room, items, onItemsChange, onBack }: P
             <div className="flex items-center gap-2 mb-2.5">
               <div className="flex-1 min-w-0">
                 <p className="text-[12px] font-semibold text-gray-800 truncate">{selectedItem.label}</p>
-                <p className="text-[10px] text-gray-400">{selectedItem.w} × {selectedItem.h} cm</p>
+                <p className="text-[10px] text-gray-400">{toMM(selectedItem.w)} × {toMM(selectedItem.h)} mm</p>
               </div>
             </div>
             <div className="flex gap-1.5">
@@ -304,7 +305,7 @@ export default function RoomDetailView({ room, items, onItemsChange, onBack }: P
         <div>
           {/* Dimensions label */}
           <div className="flex items-center justify-between mb-2 px-1">
-            <p className="text-[11px] text-gray-400">{rw} cm</p>
+            <p className="text-[11px] text-gray-400">{toMM(rw)} mm</p>
             <p className="text-[11px] text-gray-400">{items.length}개 가구</p>
           </div>
 
