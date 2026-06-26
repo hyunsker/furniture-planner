@@ -5,9 +5,13 @@ import RoomFormModal from './components/RoomFormModal'
 import AptSizeModal from './components/AptSizeModal'
 import RoomDetailView, { type FurnitureItem } from './components/RoomDetailView'
 import FurnitureSymbol from './components/FurnitureSymbol'
+import DoorPanel from './components/DoorPanel'
 import type { Room, ShapeData } from './types'
 import { getRoomPoints } from './types'
 import { FURNITURE_LIBRARY, FURNITURE_CATEGORIES } from './lib/furniture-library'
+
+// Furniture-only categories (doors/windows live in their own dedicated tab)
+const FURNITURE_CATS = FURNITURE_CATEGORIES.filter(c => c !== '문·창문')
 
 /** Ray-casting point-in-polygon */
 function pointInPoly(px: number, py: number, pts: { x: number; y: number }[]): boolean {
@@ -174,7 +178,7 @@ export default function App() {
   const saveFurniture = (roomId: string, items: FurnitureItem[]) => updateRoom(roomId, { furniture: items })
 
   // Furniture catalog & placement
-  const [sidebarTab,    setSidebarTab]    = useState<'rooms' | 'furniture'>('rooms')
+  const [sidebarTab,    setSidebarTab]    = useState<'rooms' | 'door' | 'furniture'>('rooms')
   const [furnitureCat,  setFurnitureCat]  = useState('거실')
   const [placingItem,   setPlacingItem]   = useState<{ typeId: string; name: string; w: number; h: number } | null>(null)
   const [placingCursor, setPlacingCursor] = useState<{ x: number; y: number } | null>(null)
@@ -381,6 +385,26 @@ export default function App() {
     e.stopPropagation()
     if (!canvasRef.current) return
 
+    const rect = canvasRef.current.getBoundingClientRect()
+    const cx = (e.clientX - rect.left) / scale
+    const cy = (e.clientY - rect.top)  / scale
+
+    // Placement mode (furniture / door / window): stamp into THIS room
+    if (placingItem) {
+      const fw = placingItem.w, fh = placingItem.h
+      const lx = cx - room.x_cm, ly = cy - room.y_cm
+      const newItem: FurnitureItem = {
+        id: `f-${Date.now()}`,
+        typeId: placingItem.typeId,
+        label: placingItem.name,
+        x: snap(clamp(lx - fw / 2, 0, Math.max(0, room.width_cm - fw)), GRID),
+        y: snap(clamp(ly - fh / 2, 0, Math.max(0, room.height_cm - fh)), GRID),
+        w: fw, h: fh, rotation: 0,
+      }
+      saveFurniture(room.id, [...(roomFurniture[room.id] ?? []), newItem])
+      return  // keep placement mode on for repeated stamps; Esc to exit
+    }
+
     // Multi-select mode: tapping/clicking toggles membership instead of dragging
     if (multiMode || e.shiftKey || e.metaKey || e.ctrlKey) {
       setMultiSel(prev => prev.includes(room.id) ? prev.filter(id => id !== room.id) : [...prev, room.id])
@@ -388,9 +412,6 @@ export default function App() {
       return
     }
 
-    const rect = canvasRef.current.getBoundingClientRect()
-    const cx = (e.clientX - rect.left) / scale
-    const cy = (e.clientY - rect.top)  / scale
     // If this room belongs to a locked group, drag all members together
     const members: DragMember[] = (room.group_id
       ? rooms.filter(r => r.group_id === room.group_id)
@@ -400,7 +421,7 @@ export default function App() {
     setSelectedId(room.id)
     setMultiSel([])
     ;(e.target as Element).setPointerCapture(e.pointerId)
-  }, [scale, wallMode, multiMode, rooms])
+  }, [scale, wallMode, multiMode, rooms, placingItem, roomFurniture])
 
   const canvasPointerMove = useCallback((e: React.PointerEvent) => {
     if (!canvasRef.current) return
@@ -942,15 +963,19 @@ export default function App() {
 
         {/* Tab switcher */}
         <div className="px-3 pt-2 pb-1 flex gap-1">
-          {(['rooms', 'furniture'] as const).map(tab => (
+          {([
+            { id: 'rooms' as const,     label: '🏠 공간' },
+            { id: 'door' as const,      label: '🚪 문·창문' },
+            { id: 'furniture' as const, label: '🪑 가구' },
+          ]).map(tab => (
             <button
-              key={tab}
-              onClick={() => { setSidebarTab(tab); if (tab === 'rooms') { setPlacingItem(null); setPlacingCursor(null) } }}
-              className={`flex-1 py-1.5 rounded-lg text-[12px] font-medium transition-all ${
-                sidebarTab === tab ? 'bg-indigo-500 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
+              key={tab.id}
+              onClick={() => { setSidebarTab(tab.id); if (tab.id === 'rooms') { setPlacingItem(null); setPlacingCursor(null) } }}
+              className={`flex-1 py-1.5 rounded-lg text-[11.5px] font-medium transition-all ${
+                sidebarTab === tab.id ? 'bg-indigo-500 text-white shadow-sm' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
               }`}
             >
-              {tab === 'rooms' ? '🏠 공간' : '🪑 가구'}
+              {tab.label}
             </button>
           ))}
         </div>
@@ -1013,6 +1038,25 @@ export default function App() {
           })}
         </div>
 
+        {/* Door / window tab panel */}
+        {sidebarTab === 'door' && (
+          <div className="flex-1 overflow-y-auto flex flex-col">
+            {placingItem && (
+              <div className="mx-2 mb-1 px-3 py-2 rounded-xl bg-indigo-500 text-white">
+                <p className="text-[11px] font-semibold">📍 배치 중: {placingItem.name}</p>
+                <p className="text-[10px] opacity-80">{toMM(placingItem.w)}mm · 방 위를 클릭하세요 · Esc 취소</p>
+              </div>
+            )}
+            <DoorPanel
+              activeKey={placingItem ? `${placingItem.typeId}:${Math.round(placingItem.w * 10)}` : null}
+              onPick={(typeId, name, wCm, hCm) => {
+                setPlacingItem({ typeId, name, w: wCm, h: hCm })
+                if (isMobile) setMobileSidebarOpen(false)
+              }}
+            />
+          </div>
+        )}
+
         {/* Furniture catalog tab panel */}
         {sidebarTab === 'furniture' && (
           <div className="flex-1 overflow-y-auto flex flex-col">
@@ -1025,7 +1069,7 @@ export default function App() {
             )}
             {/* Category pills */}
             <div className="flex gap-1 px-2 py-1 flex-wrap">
-              {FURNITURE_CATEGORIES.map(cat => (
+              {FURNITURE_CATS.map(cat => (
                 <button
                   key={cat}
                   onClick={() => setFurnitureCat(cat)}
@@ -1083,7 +1127,7 @@ export default function App() {
         {sidebarTab === 'rooms' && rooms.length > 0 && (
           <div className="mx-3 mb-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-100">
             <p className="text-[10px] text-amber-700 leading-relaxed">
-              🚪 <strong>출입문</strong>은 방을 더블클릭하면<br/>상세보기에서 추가할 수 있어요.
+              🚪 <strong>문·창문</strong> 탭에서 크기를 고른 뒤<br/>도면의 방을 클릭해 배치하세요.
             </p>
           </div>
         )}
