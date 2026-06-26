@@ -15,6 +15,17 @@ export type ShapeData =
   | { type: 'poly'; points: { x: number; y: number }[] }
   | { type: 'polyline'; points: { x: number; y: number }[] }  // open walls (not closed)
 
+export type FurnitureItem = {
+  id: string
+  typeId: string
+  label: string
+  x: number
+  y: number
+  w: number
+  h: number
+  rotation: number
+}
+
 export interface Room {
   id: string
   project_id: string
@@ -26,6 +37,7 @@ export interface Room {
   color: string
   order_index: number
   shape_data: ShapeData
+  furniture?: FurnitureItem[]
 }
 
 /** Returns SVG polygon points string for a room shape (in given w×h coordinate space) */

@@ -1,21 +1,12 @@
 import { useState, useRef, useCallback } from 'react'
-import type { Room } from '../types'
+import type { Room, FurnitureItem } from '../types'
 import { getRoomPoints } from '../types'
 import FurnitureSymbol from './FurnitureSymbol'
 import AddFurnitureModal from './AddFurnitureModal'
 import DoorSymbol, { type DoorItem, type DoorType, type DoorWall } from './DoorSymbol'
 import { FURNITURE_LIBRARY, FURNITURE_CATEGORIES, type FurnitureVariant, type FurnitureType } from '../lib/furniture-library'
 
-export type FurnitureItem = {
-  id: string
-  typeId: string
-  label: string
-  x: number
-  y: number
-  w: number
-  h: number
-  rotation: number
-}
+export type { FurnitureItem }
 
 interface Props {
   room: Room

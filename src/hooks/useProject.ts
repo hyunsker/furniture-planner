@@ -111,6 +111,8 @@ export function useProject(shareCode: string | null) {
 
   async function updateRoom(id: string, updates: Partial<Room>) {
     snapshot()
+    // Optimistic local update so edits (incl. furniture) feel instant
+    setRooms(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r))
     await supabase.from('rooms').update(updates).eq('id', id)
   }
 

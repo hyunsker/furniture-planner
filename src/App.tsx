@@ -148,7 +148,10 @@ export default function App() {
   const [showAptModal,  setShowAptModal]  = useState(false)
   const [editingRoom,   setEditingRoom]   = useState<Room | null>(null)
   const [detailRoom,    setDetailRoom]    = useState<Room | null>(null)
-  const [roomFurniture, setRoomFurniture] = useState<Record<string, FurnitureItem[]>>({})
+  // Furniture is stored per-room in Supabase (rooms.furniture) so both partners see it.
+  const roomFurniture: Record<string, FurnitureItem[]> = {}
+  for (const r of rooms) roomFurniture[r.id] = r.furniture ?? []
+  const saveFurniture = (roomId: string, items: FurnitureItem[]) => updateRoom(roomId, { furniture: items })
 
   // Furniture catalog & placement
   const [sidebarTab,    setSidebarTab]    = useState<'rooms' | 'furniture'>('rooms')
@@ -714,7 +717,7 @@ export default function App() {
       <RoomDetailView
         room={liveRoom}
         items={roomFurniture[liveRoom.id] ?? []}
-        onItemsChange={items => setRoomFurniture(prev => ({ ...prev, [liveRoom.id]: items }))}
+        onItemsChange={items => saveFurniture(liveRoom.id, items)}
         onBack={() => setDetailRoom(null)}
       />
     )
@@ -1248,7 +1251,7 @@ export default function App() {
                         y: snap(clamp(ly - fh / 2, 0, room.height_cm - fh), 5),
                         w: fw, h: fh, rotation: 0,
                       }
-                      setRoomFurniture(prev => ({ ...prev, [room.id]: [...(prev[room.id] ?? []), newItem] }))
+                      saveFurniture(room.id, [...(roomFurniture[room.id] ?? []), newItem])
                     }
                     // Keep placement mode on for multiple placements, Esc to exit
                     return
